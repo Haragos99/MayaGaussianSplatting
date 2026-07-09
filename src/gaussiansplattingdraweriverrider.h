@@ -1,0 +1,192 @@
+#pragma once
+#include <maya/MPxDrawOverride.h>
+#include <maya/MPxGeometryOverride.h>
+#include <maya/MUserData.h>
+#include <maya/MGlobal.h>
+#include <maya/MPxLocatorNode.h>
+#include <maya/MDrawRegistry.h>
+#include <maya/MHWGeometry.h>
+#include <random>
+#include <maya/MPxSubSceneOverride.h>
+#include <maya/MShaderManager.h>
+#include <maya/MBoundingBox.h>
+#include <maya/MPoint.h>
+#include <maya/MFnDependencyNode.h>
+#include <maya/MFnDagNode.h>
+#include <maya/MFnCamera.h>
+#include <maya/M3dView.h>
+#include <maya/MDagPath.h>
+#include "data.h"
+
+using namespace MHWRender;
+
+
+struct TestPoint
+{
+    float pos[3];
+    float color[4]; // rgba
+};
+
+// MyLocator node is drawn using MyLocatorDrawOverride
+class GaussianSplattingLocator : public MPxLocatorNode
+{
+public:
+    GaussianSplattingLocator() { generateTestPoints(500); }
+    static MTypeId id;
+    static MObject locatorMsgAttr;
+    static void* creator() { return new GaussianSplattingLocator(); }
+    static MStatus initialize();
+    MStatus connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc) override;
+    void generateTestPoints(int count)
+    {
+        std::mt19937 rng(1234);
+        std::uniform_real_distribution<float> posDist(-3.0f, 3.0f);
+        std::uniform_real_distribution<float> colDist(0.2f, 1.0f);
+
+        m_points.reserve(count);
+        for (int i = 0; i < count; ++i)
+        {
+            TestPoint p;
+            p.pos[0] = posDist(rng);
+            p.pos[1] = posDist(rng);
+            p.pos[2] = posDist(rng);
+            p.color[0] = colDist(rng);
+            p.color[1] = colDist(rng);
+            p.color[2] = colDist(rng);
+            p.color[3] = 1.0f;
+            m_points.push_back(p);
+        }
+    }
+
+    std::vector<TestPoint> m_points;
+    MBoundingBox boundingBox() const override
+    {
+        return MBoundingBox(MPoint(-5, -5, -5), MPoint(5, 5, 5));
+    }
+    bool isBounded() const override { return true; }
+    const std::vector<TestPoint>& points() const { return m_points; }
+
+};
+
+
+class GsTestSubSceneOverride final : public MHWRender::MPxSubSceneOverride
+{
+public:
+    static MHWRender::MPxSubSceneOverride* creator(const MObject& obj)
+    {
+        return new GsTestSubSceneOverride(obj);
+    }
+
+    GsTestSubSceneOverride(const MObject& obj);
+
+    MObject m_object;
+    MPxNode* m_node = nullptr;
+
+    ~GsTestSubSceneOverride() override;
+
+    MHWRender::DrawAPI supportedDrawAPIs() const override;
+
+    bool requiresUpdate(
+        const MHWRender::MSubSceneContainer& container,
+        const MHWRender::MFrameContext& frameContext) const override;
+
+    void update(
+        MHWRender::MSubSceneContainer& container,
+        const MHWRender::MFrameContext& frameContext) override;
+
+    bool furtherUpdateRequired(
+        const MHWRender::MFrameContext& frameContext) override;
+
+    bool hasUIDrawables() const override;
+
+    bool areUIDrawablesDirty() const override;
+
+    void addUIDrawables(
+        MHWRender::MUIDrawManager& drawManager,
+        const MHWRender::MFrameContext& frameContext) override;
+
+    bool enableUpdateForSelection() const override;
+
+    bool getSelectionPath(
+        const MHWRender::MRenderItem& renderItem,
+        MDagPath& dagPath) const override;
+
+    bool getInstancedSelectionPath(
+        const MHWRender::MRenderItem& renderItem,
+        const MHWRender::MIntersection& intersection,
+        MDagPath& dagPath) const override;
+
+    void updateSelectionGranularity(
+        const MDagPath& path,
+        MHWRender::MSelectionContext& selectionContext) override;
+
+    void markDirty();
+
+private:
+    void createOrUpdateRenderItem(
+        MHWRender::MSubSceneContainer& container);
+
+    void createShader();
+
+    void releaseShader();
+
+    void loadSplatsFromNodeOrDemoData();
+
+    bool readCamera(
+        MPoint& cameraWorldPosition,
+        MVector& cameraWorldRight,
+        MVector& cameraWorldUp,
+        MVector& cameraWorldForward) const;
+
+    bool cameraChanged(
+        const MPoint& cameraWorldPosition,
+        const MVector& cameraWorldForward) const;
+
+    void buildGeometry(
+        const MPoint& cameraWorldPosition,
+        const MVector& cameraWorldRight,
+        const MVector& cameraWorldUp,
+        const MVector& cameraWorldForward);
+
+    void buildVertexBuffer(
+        const std::vector<GS::SplatVertex>& vertices);
+
+    void buildIndexBuffer(
+        const std::vector<unsigned int>& indices);
+
+    static float depthFromCamera(
+        const MPoint& worldPoint,
+        const MPoint& cameraWorldPosition,
+        const MVector& cameraWorldForward);
+
+private:
+    static const MString kRenderItemName;
+
+    MObject m_nodeObj;
+    MDagPath m_dagPath;
+
+    bool m_dirty = true;
+    bool m_geometryDirty = true;
+    bool m_shaderDirty = true;
+    bool m_uiDirty = true;
+
+    std::vector<GS::GaussianSplat> m_splats;
+
+    MBoundingBox m_boundingBox;
+
+    std::unique_ptr<MHWRender::MVertexBuffer> m_positionBuffer;
+    std::unique_ptr<MHWRender::MVertexBuffer> m_colorBuffer;
+    std::unique_ptr<MHWRender::MVertexBuffer> m_uvBuffer;
+    std::unique_ptr<MHWRender::MIndexBuffer>  m_indexBuffer;
+
+    MHWRender::MShaderInstance* m_shader = nullptr;
+
+    mutable bool m_haveLastCamera = false;
+    mutable MPoint m_lastCameraPosition;
+    mutable MVector m_lastCameraForward;
+
+    unsigned int m_vertexCount = 0;
+    unsigned int m_indexCount = 0;
+};
+
+
