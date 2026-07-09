@@ -29,11 +29,11 @@ MStatus GaussianSplattingLocator::initialize()
 
 
 //////////////////////////////////////////////////////////////////////////////////
-const MString GsTestSubSceneOverride::kRenderItemName("gaussianSplatRenderItem");
+const MString GaussianSplattingSubSceneOverride::kRenderItemName("gaussianSplatRenderItem");
 
 
 
-GsTestSubSceneOverride::GsTestSubSceneOverride(const MObject& obj)
+GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObject& obj)
     : MPxSubSceneOverride(obj)
     , m_nodeObj(obj)
 {
@@ -48,7 +48,7 @@ GsTestSubSceneOverride::GsTestSubSceneOverride(const MObject& obj)
     loadSplatsFromNodeOrDemoData();
 }
 
-GsTestSubSceneOverride::~GsTestSubSceneOverride()
+GaussianSplattingSubSceneOverride::~GaussianSplattingSubSceneOverride()
 {
     releaseShader();
 
@@ -58,12 +58,12 @@ GsTestSubSceneOverride::~GsTestSubSceneOverride()
     m_indexBuffer.reset();
 }
 
-MHWRender::DrawAPI GsTestSubSceneOverride::supportedDrawAPIs() const
+MHWRender::DrawAPI GaussianSplattingSubSceneOverride::supportedDrawAPIs() const
 {
     return MHWRender::kOpenGLCoreProfile | MHWRender::kDirectX11;
 }
 
-bool GsTestSubSceneOverride::requiresUpdate(
+bool GaussianSplattingSubSceneOverride::requiresUpdate(
     const MHWRender::MSubSceneContainer& container,
     const MHWRender::MFrameContext& frameContext) const
 {
@@ -89,7 +89,7 @@ bool GsTestSubSceneOverride::requiresUpdate(
         cameraIsDifferent;
 }
 
-void GsTestSubSceneOverride::update(
+void GaussianSplattingSubSceneOverride::update(
     MHWRender::MSubSceneContainer& container,
     const MHWRender::MFrameContext& frameContext)
 {
@@ -180,7 +180,7 @@ void GsTestSubSceneOverride::update(
     m_lastCameraForward = cameraForward;
 }
 
-bool GsTestSubSceneOverride::furtherUpdateRequired(
+bool GaussianSplattingSubSceneOverride::furtherUpdateRequired(
     const MHWRender::MFrameContext& frameContext)
 {
     // Return true only if you are doing progressive/async loading.
@@ -188,17 +188,17 @@ bool GsTestSubSceneOverride::furtherUpdateRequired(
     return false;
 }
 
-bool GsTestSubSceneOverride::hasUIDrawables() const
+bool GaussianSplattingSubSceneOverride::hasUIDrawables() const
 {
     return true;
 }
 
-bool GsTestSubSceneOverride::areUIDrawablesDirty() const
+bool GaussianSplattingSubSceneOverride::areUIDrawablesDirty() const
 {
     return m_uiDirty;
 }
 
-void GsTestSubSceneOverride::addUIDrawables(
+void GaussianSplattingSubSceneOverride::addUIDrawables(
     MHWRender::MUIDrawManager& drawManager,
     const MHWRender::MFrameContext& frameContext)
 {
@@ -229,12 +229,12 @@ void GsTestSubSceneOverride::addUIDrawables(
     m_uiDirty = false;
 }
 
-bool GsTestSubSceneOverride::enableUpdateForSelection() const
+bool GaussianSplattingSubSceneOverride::enableUpdateForSelection() const
 {
     return true;
 }
 
-bool GsTestSubSceneOverride::getSelectionPath(
+bool GaussianSplattingSubSceneOverride::getSelectionPath(
     const MHWRender::MRenderItem& renderItem,
     MDagPath& dagPath) const
 {
@@ -247,7 +247,7 @@ bool GsTestSubSceneOverride::getSelectionPath(
     return true;
 }
 
-bool GsTestSubSceneOverride::getInstancedSelectionPath(
+bool GaussianSplattingSubSceneOverride::getInstancedSelectionPath(
     const MHWRender::MRenderItem& renderItem,
     const MHWRender::MIntersection& intersection,
     MDagPath& dagPath) const
@@ -261,21 +261,21 @@ bool GsTestSubSceneOverride::getInstancedSelectionPath(
     return true;
 }
 
-void GsTestSubSceneOverride::updateSelectionGranularity(
+void GaussianSplattingSubSceneOverride::updateSelectionGranularity(
     const MDagPath& path,
     MHWRender::MSelectionContext& selectionContext)
 {
     selectionContext.setSelectionLevel(MHWRender::MSelectionContext::kObject);
 }
 
-void GsTestSubSceneOverride::markDirty()
+void GaussianSplattingSubSceneOverride::markDirty()
 {
     m_dirty = true;
     m_geometryDirty = true;
     m_uiDirty = true;
 }
 
-void GsTestSubSceneOverride::createOrUpdateRenderItem(
+void GaussianSplattingSubSceneOverride::createOrUpdateRenderItem(
     MHWRender::MSubSceneContainer& container)
 {
     MRenderItem* item = container.find(kRenderItemName);
@@ -304,7 +304,7 @@ void GsTestSubSceneOverride::createOrUpdateRenderItem(
     }
 }
 
-void GsTestSubSceneOverride::createShader()
+void GaussianSplattingSubSceneOverride::createShader()
 {
     releaseShader();
 
@@ -334,7 +334,7 @@ void GsTestSubSceneOverride::createShader()
     }
 }
 
-void GsTestSubSceneOverride::releaseShader()
+void GaussianSplattingSubSceneOverride::releaseShader()
 {
     if (!m_shader)
     {
@@ -355,7 +355,7 @@ void GsTestSubSceneOverride::releaseShader()
 }
 
 
-void GsTestSubSceneOverride::loadSplatsFromNodeOrDemoData()
+void GaussianSplattingSubSceneOverride::loadSplatsFromNodeOrDemoData()
 {
     // Replace this with reading data from your GaussianSplatShape node:
     //
@@ -415,7 +415,7 @@ void GsTestSubSceneOverride::loadSplatsFromNodeOrDemoData()
     m_uiDirty = true;
 }
 
-bool GsTestSubSceneOverride::readCamera(
+bool GaussianSplattingSubSceneOverride::readCamera(
     MPoint& cameraWorldPosition,
     MVector& cameraWorldRight,
     MVector& cameraWorldUp,
@@ -469,7 +469,7 @@ bool GsTestSubSceneOverride::readCamera(
     return true;
 }
 
-bool GsTestSubSceneOverride::cameraChanged(
+bool GaussianSplattingSubSceneOverride::cameraChanged(
     const MPoint& cameraWorldPosition,
     const MVector& cameraWorldForward) const
 {
@@ -487,7 +487,7 @@ bool GsTestSubSceneOverride::cameraChanged(
     return positionDelta > 0.001 || directionDelta > 0.0001;
 }
 
-void GsTestSubSceneOverride::buildGeometry(
+void GaussianSplattingSubSceneOverride::buildGeometry(
     const MPoint& cameraWorldPosition,
     const MVector& cameraWorldRight,
     const MVector& cameraWorldUp,
@@ -616,7 +616,7 @@ void GsTestSubSceneOverride::buildGeometry(
     m_indexCount = static_cast<unsigned int>(indices.size());
 }
 
-void GsTestSubSceneOverride::buildVertexBuffer(
+void GaussianSplattingSubSceneOverride::buildVertexBuffer(
     const std::vector<GS::SplatVertex>& vertices)
 {
     m_positionBuffer.reset();
@@ -694,7 +694,7 @@ void GsTestSubSceneOverride::buildVertexBuffer(
     m_uvBuffer->commit(uvs);
 }
 
-void GsTestSubSceneOverride::buildIndexBuffer(
+void GaussianSplattingSubSceneOverride::buildIndexBuffer(
     const std::vector<unsigned int>& indices)
 {
     m_indexBuffer.reset();
@@ -726,7 +726,7 @@ void GsTestSubSceneOverride::buildIndexBuffer(
     m_indexBuffer->commit(dst);
 }
 
-float GsTestSubSceneOverride::depthFromCamera(
+float GaussianSplattingSubSceneOverride::depthFromCamera(
     const MPoint& worldPoint,
     const MPoint& cameraWorldPosition,
     const MVector& cameraWorldForward)

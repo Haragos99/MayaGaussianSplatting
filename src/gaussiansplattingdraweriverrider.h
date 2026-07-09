@@ -69,20 +69,20 @@ public:
 };
 
 
-class GsTestSubSceneOverride final : public MHWRender::MPxSubSceneOverride
+class GaussianSplattingSubSceneOverride final : public MHWRender::MPxSubSceneOverride
 {
 public:
     static MHWRender::MPxSubSceneOverride* creator(const MObject& obj)
     {
-        return new GsTestSubSceneOverride(obj);
+        return new GaussianSplattingSubSceneOverride(obj);
     }
 
-    GsTestSubSceneOverride(const MObject& obj);
+    GaussianSplattingSubSceneOverride(const MObject& obj);
 
     MObject m_object;
     MPxNode* m_node = nullptr;
 
-    ~GsTestSubSceneOverride() override;
+    ~GaussianSplattingSubSceneOverride() override;
 
     MHWRender::DrawAPI supportedDrawAPIs() const override;
 
