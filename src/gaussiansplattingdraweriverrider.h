@@ -17,6 +17,7 @@
 #include <maya/M3dView.h>
 #include <maya/MDagPath.h>
 #include "data.h"
+#include <chrono>
 
 using namespace MHWRender;
 
