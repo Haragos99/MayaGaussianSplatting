@@ -39,7 +39,7 @@ GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObje
 {
     MStatus status;
     MFnDagNode dagNode(obj, &status);
-
+    m_lastFrame = std::chrono::high_resolution_clock::now();
     if (status)
     {
         dagNode.getPath(m_dagPath);
@@ -93,6 +93,12 @@ void GaussianSplattingSubSceneOverride::update(
     MHWRender::MSubSceneContainer& container,
     const MHWRender::MFrameContext& frameContext)
 {
+    auto now = std::chrono::high_resolution_clock::now();
+
+    double dt = std::chrono::duration<double>(now - m_lastFrame).count();
+
+    m_fps = 1.0 / dt;
+
     createOrUpdateRenderItem(container);
 
     MRenderItem* item = container.find(kRenderItemName);
@@ -178,6 +184,7 @@ void GaussianSplattingSubSceneOverride::update(
     m_haveLastCamera = true;
     m_lastCameraPosition = cameraPosition;
     m_lastCameraForward = cameraForward;
+    m_lastFrame = now;
 }
 
 bool GaussianSplattingSubSceneOverride::furtherUpdateRequired(
@@ -206,14 +213,24 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
 
     drawManager.setColor(MColor(1.0f, 0.8f, 0.1f, 1.0f));
 
-    MString label;
-    label += "Gaussian splats: ";
-    label += static_cast<int>(m_splats.size());
+    MString splatSizeLabel;
+    splatSizeLabel += "Gaussian splats: ";
+    splatSizeLabel += static_cast<int>(m_splats.size());
 
     drawManager.text(
         MPoint(0.0, 1.5, 0.0),
-        label,
+        splatSizeLabel,
         MHWRender::MUIDrawManager::kCenter);
+
+    MString fpsLabel;
+    fpsLabel += "FPS: ";
+    fpsLabel += static_cast<int>(m_fps);
+
+    drawManager.text(
+        MPoint(0.0, 2.5, 0.0),
+        fpsLabel,
+        MHWRender::MUIDrawManager::kLeft);
+
 
     drawManager.setColor(MColor(0.2f, 0.8f, 1.0f, 1.0f));
     drawManager.box(

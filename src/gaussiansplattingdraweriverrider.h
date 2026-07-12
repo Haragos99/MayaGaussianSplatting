@@ -170,6 +170,9 @@ private:
     bool m_shaderDirty = true;
     bool m_uiDirty = true;
 
+    std::chrono::high_resolution_clock::time_point m_lastFrame;
+    double m_fps = 0.0;
+
     std::vector<GS::GaussianSplat> m_splats;
 
     MBoundingBox m_boundingBox;
