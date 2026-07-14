@@ -78,15 +78,22 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
         cameraUp,
         cameraForward);
 
-    const bool cameraIsDifferent =
-        haveCamera && cameraChanged(cameraPosition, cameraForward);
+    const bool cameraNeedsResort =
+        haveCamera && cameraChangedEnoughForIndexRebuild(
+            cameraPosition,
+            cameraForward);
 
     return
         container.count() == 0 ||
         m_dirty ||
-        m_geometryDirty ||
+        m_vertexBufferDirty ||
+        m_indexBufferDirty ||
         m_shaderDirty ||
-        cameraIsDifferent;
+        cameraNeedsResort ||
+        !m_positionBuffer ||
+        !m_colorBuffer ||
+        !m_uvBuffer ||
+        !m_indexBuffer;
 }
 
 void GaussianSplattingSubSceneOverride::update(
@@ -101,7 +108,7 @@ void GaussianSplattingSubSceneOverride::update(
 
     createOrUpdateRenderItem(container);
 
-    MRenderItem* item = container.find(kRenderItemName);
+    MHWRender::MRenderItem* item = container.find(kRenderItemName);
     if (!item)
     {
         return;
@@ -131,26 +138,29 @@ void GaussianSplattingSubSceneOverride::update(
     if (!haveCamera)
     {
         cameraPosition = MPoint(0.0, 0.0, 10.0);
-        cameraRight = MVector(1.0, 0.0, 0.0);
-        cameraUp = MVector(0.0, 1.0, 0.0);
         cameraForward = MVector(0.0, 0.0, -1.0);
     }
 
-    const bool mustRebuildGeometry =
-        m_geometryDirty ||
-        cameraChanged(cameraPosition, cameraForward) ||
+    // Build static vertex buffers only when splat data changed.
+    if (
+        m_vertexBufferDirty ||
         !m_positionBuffer ||
         !m_colorBuffer ||
-        !m_uvBuffer ||
-        !m_indexBuffer;
-
-    if (mustRebuildGeometry)
+        !m_uvBuffer)
     {
-        buildGeometry(
-            cameraPosition,
-            cameraRight,
-            cameraUp,
-            cameraForward);
+        buildStaticVertexBuffersOnce();
+
+        // If vertices changed, the index buffer must also be rebuilt.
+        m_indexBufferDirty = true;
+    }
+
+    // Rebuild only the sorted index buffer when the camera changed enough.
+    if (
+        m_indexBufferDirty ||
+        !m_indexBuffer ||
+        cameraChangedEnoughForIndexRebuild(cameraPosition, cameraForward))
+    {
+        rebuildSortedIndexBufferOnly(cameraPosition, cameraForward);
     }
 
     if (
@@ -161,7 +171,7 @@ void GaussianSplattingSubSceneOverride::update(
         m_vertexCount > 0 &&
         m_indexCount > 0)
     {
-        MVertexBufferArray vertexBuffers;
+        MHWRender::MVertexBufferArray vertexBuffers;
 
         vertexBuffers.addBuffer("positions", m_positionBuffer.get());
         vertexBuffers.addBuffer("colors", m_colorBuffer.get());
@@ -177,13 +187,10 @@ void GaussianSplattingSubSceneOverride::update(
     item->enable(true);
 
     m_dirty = false;
-    m_geometryDirty = false;
+    m_vertexBufferDirty = false;
+    m_indexBufferDirty = false;
     m_shaderDirty = false;
     m_uiDirty = true;
-
-    m_haveLastCamera = true;
-    m_lastCameraPosition = cameraPosition;
-    m_lastCameraForward = cameraForward;
     m_lastFrame = now;
 }
 
@@ -504,135 +511,6 @@ bool GaussianSplattingSubSceneOverride::cameraChanged(
     return positionDelta > 0.001 || directionDelta > 0.0001;
 }
 
-void GaussianSplattingSubSceneOverride::buildGeometry(
-    const MPoint& cameraWorldPosition,
-    const MVector& cameraWorldRight,
-    const MVector& cameraWorldUp,
-    const MVector& cameraWorldForward)
-{
-    std::vector<size_t> order;
-    order.reserve(m_splats.size());
-
-    for (size_t i = 0; i < m_splats.size(); ++i)
-    {
-        order.push_back(i);
-    }
-
-    MMatrix objectToWorld;
-    MMatrix worldToObject;
-
-    if (m_dagPath.isValid())
-    {
-        objectToWorld = m_dagPath.inclusiveMatrix();
-        worldToObject = objectToWorld.inverse();
-    }
-
-    std::sort(
-        order.begin(),
-        order.end(),
-        [&](size_t a, size_t b)
-        {
-            const MPoint worldA = m_splats[a].center * objectToWorld;
-            const MPoint worldB = m_splats[b].center * objectToWorld;
-
-            const float depthA = depthFromCamera(
-                worldA,
-                cameraWorldPosition,
-                cameraWorldForward);
-
-            const float depthB = depthFromCamera(
-                worldB,
-                cameraWorldPosition,
-                cameraWorldForward);
-
-            // Back-to-front for transparency.
-            return depthA > depthB;
-        });
-
-    MVector localRight = cameraWorldRight * worldToObject;
-    MVector localUp = cameraWorldUp * worldToObject;
-
-    localRight.normalize();
-    localUp.normalize();
-
-    std::vector<GS::SplatVertex> vertices;
-    std::vector<unsigned int> indices;
-
-    constexpr unsigned int CircleSegments = 16;
-
-    vertices.reserve(m_splats.size() * (CircleSegments + 1));
-    indices.reserve(m_splats.size() * CircleSegments * 3);
-
-    m_boundingBox.clear();
-
-    for (size_t sortedIndex = 0; sortedIndex < order.size(); ++sortedIndex)
-    {
-        const GS::GaussianSplat& splat = m_splats[order[sortedIndex]];
-
-        const unsigned int base =
-            static_cast<unsigned int>(vertices.size());
-
-        const MVector rx = localRight * splat.scaleX / 10;
-        const MVector uy = localUp * splat.scaleY / 10;
-
-        const float alpha = std::clamp(splat.opacity, 0.0f, 1.0f);
-
-        auto makeVertex =
-            [&](const MPoint& p, float u, float v) -> GS::SplatVertex
-            {
-                GS::SplatVertex vertex;
-
-                vertex.position[0] = static_cast<float>(p.x);
-                vertex.position[1] = static_cast<float>(p.y);
-                vertex.position[2] = static_cast<float>(p.z);
-
-                vertex.color[0] = splat.color.r;
-                vertex.color[1] = splat.color.g;
-                vertex.color[2] = splat.color.b;
-                vertex.color[3] = alpha;
-
-                vertex.uv[0] = u;
-                vertex.uv[1] = v;
-
-                return vertex;
-            };
-
-        // Center vertex
-        vertices.push_back(makeVertex(splat.center, 0.0f, 0.0f));
-
-        // Rim vertices
-        for (unsigned int i = 0; i < CircleSegments; ++i)
-        {
-            const float angle = static_cast<float>(2.0 * M_PI * i / CircleSegments);
-
-            const float c = std::cos(angle);
-            const float s = std::sin(angle);
-
-            MPoint p = splat.center + rx * c + uy * s;
-
-            vertices.push_back(makeVertex(p, c, s));
-
-            m_boundingBox.expand(p);
-        }
-
-        m_boundingBox.expand(splat.center);
-
-        // Triangle fan
-        for (unsigned int i = 0; i < CircleSegments; ++i)
-        {
-            indices.push_back(base);
-            indices.push_back(base + 1 + i);
-            indices.push_back(base + 1 + ((i + 1) % CircleSegments));
-        }
-    }
-
-    buildVertexBuffer(vertices);
-    buildIndexBuffer(indices);
-
-    m_vertexCount = static_cast<unsigned int>(vertices.size());
-    m_indexCount = static_cast<unsigned int>(indices.size());
-}
-
 void GaussianSplattingSubSceneOverride::buildVertexBuffer(
     const std::vector<GS::SplatVertex>& vertices)
 {
@@ -750,4 +628,287 @@ float GaussianSplattingSubSceneOverride::depthFromCamera(
 {
     const MVector toPoint = worldPoint - cameraWorldPosition;
     return static_cast<float>(toPoint * cameraWorldForward);
+}
+
+
+void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
+    const MPoint& cameraWorldPosition,
+    const MVector& cameraWorldForward)
+{
+    std::vector<unsigned int> sortedSplatIds;
+    sortedSplatIds.reserve(m_splats.size());
+
+    for (unsigned int i = 0; i < static_cast<unsigned int>(m_splats.size()); ++i)
+    {
+        sortedSplatIds.push_back(i);
+    }
+
+    MMatrix objectToWorld;
+
+    if (m_dagPath.isValid())
+    {
+        objectToWorld = m_dagPath.inclusiveMatrix();
+    }
+
+    std::sort(
+        sortedSplatIds.begin(),
+        sortedSplatIds.end(),
+        [&](unsigned int a, unsigned int b)
+        {
+            const MPoint worldA = m_splats[a].center * objectToWorld;
+            const MPoint worldB = m_splats[b].center * objectToWorld;
+
+            return depthFromCamera(
+                worldA,
+                cameraWorldPosition,
+                cameraWorldForward)
+    >
+                depthFromCamera(
+                    worldB,
+                    cameraWorldPosition,
+                    cameraWorldForward);
+        });
+
+    std::vector<unsigned int> indices;
+    indices.reserve(m_splats.size() * CircleSegments * 3);
+
+    for (unsigned int splatId : sortedSplatIds)
+    {
+        const unsigned int base = splatId * (CircleSegments + 1);
+
+        for (unsigned int i = 0; i < CircleSegments; ++i)
+        {
+            indices.push_back(base);
+            indices.push_back(base + 1 + i);
+            indices.push_back(base + 1 + ((i + 1) % CircleSegments));
+        }
+    }
+
+    uploadIndexBuffer(indices);
+
+    m_indexCount = static_cast<unsigned int>(indices.size());
+    m_indexBufferDirty = false;
+
+    m_haveLastCamera = true;
+    m_lastCameraPosition = cameraWorldPosition;
+    m_lastCameraForward = cameraWorldForward;
+}
+
+
+void GaussianSplattingSubSceneOverride::uploadVertexBuffers(
+    const std::vector<GS::SplatVertex>& vertices)
+{
+    m_positionBuffer.reset();
+    m_colorBuffer.reset();
+    m_uvBuffer.reset();
+
+    const unsigned int vertexCount =
+        static_cast<unsigned int>(vertices.size());
+
+    if (vertexCount == 0)
+    {
+        m_vertexCount = 0;
+        return;
+    }
+
+    MHWRender::MVertexBufferDescriptor positionDesc(
+        "",
+        MHWRender::MGeometry::kPosition,
+        MHWRender::MGeometry::kFloat,
+        3);
+
+    MHWRender::MVertexBufferDescriptor colorDesc(
+        "",
+        MHWRender::MGeometry::kColor,
+        MHWRender::MGeometry::kFloat,
+        4);
+
+    MHWRender::MVertexBufferDescriptor uvDesc(
+        "",
+        MHWRender::MGeometry::kTexture,
+        MHWRender::MGeometry::kFloat,
+        2);
+
+    m_positionBuffer =
+        std::make_unique<MHWRender::MVertexBuffer>(positionDesc);
+
+    m_colorBuffer =
+        std::make_unique<MHWRender::MVertexBuffer>(colorDesc);
+
+    m_uvBuffer =
+        std::make_unique<MHWRender::MVertexBuffer>(uvDesc);
+
+    float* positions =
+        static_cast<float*>(m_positionBuffer->acquire(vertexCount, true));
+
+    float* colors =
+        static_cast<float*>(m_colorBuffer->acquire(vertexCount, true));
+
+    float* uvs =
+        static_cast<float*>(m_uvBuffer->acquire(vertexCount, true));
+
+    if (!positions || !colors || !uvs)
+    {
+        m_positionBuffer.reset();
+        m_colorBuffer.reset();
+        m_uvBuffer.reset();
+
+        m_vertexCount = 0;
+        return;
+    }
+
+    for (unsigned int i = 0; i < vertexCount; ++i)
+    {
+        const GS::SplatVertex& vertex = vertices[i];
+
+        positions[i * 3 + 0] = vertex.position[0];
+        positions[i * 3 + 1] = vertex.position[1];
+        positions[i * 3 + 2] = vertex.position[2];
+
+        colors[i * 4 + 0] = vertex.color[0];
+        colors[i * 4 + 1] = vertex.color[1];
+        colors[i * 4 + 2] = vertex.color[2];
+        colors[i * 4 + 3] = vertex.color[3];
+
+        uvs[i * 2 + 0] = vertex.uv[0];
+        uvs[i * 2 + 1] = vertex.uv[1];
+    }
+
+    m_positionBuffer->commit(positions);
+    m_colorBuffer->commit(colors);
+    m_uvBuffer->commit(uvs);
+
+    m_vertexCount = vertexCount;
+}
+
+
+bool GaussianSplattingSubSceneOverride::cameraChangedEnoughForIndexRebuild(
+    const MPoint& cameraWorldPosition,
+    const MVector& cameraWorldForward) const
+{
+    if (!m_haveLastCamera)
+    {
+        return true;
+    }
+
+    const double positionDelta =
+        cameraWorldPosition.distanceTo(m_lastCameraPosition);
+
+    const MVector currentForward = cameraWorldForward.normal();
+    const MVector lastForward = m_lastCameraForward.normal();
+
+    const double directionDot =
+        std::max(-1.0, std::min(1.0, currentForward * lastForward));
+
+    const double directionDelta =
+        1.0 - std::abs(directionDot);
+
+    // Tune these values.
+    // Larger values = fewer sorts, faster viewport, less accurate transparency.
+    constexpr double kPositionThreshold = 0.05;
+    constexpr double kDirectionThreshold = 0.002;
+
+    return
+        positionDelta > kPositionThreshold ||
+        directionDelta > kDirectionThreshold;
+}
+
+
+void GaussianSplattingSubSceneOverride::uploadIndexBuffer(
+    const std::vector<unsigned int>& indices)
+{
+    m_indexBuffer.reset();
+
+    const unsigned int indexCount =
+        static_cast<unsigned int>(indices.size());
+
+    if (indexCount == 0)
+    {
+        m_indexCount = 0;
+        return;
+    }
+
+    m_indexBuffer =
+        std::make_unique<MHWRender::MIndexBuffer>(
+            MHWRender::MGeometry::kUnsignedInt32);
+
+    unsigned int* dst =
+        static_cast<unsigned int*>(m_indexBuffer->acquire(indexCount, true));
+
+    if (!dst)
+    {
+        m_indexBuffer.reset();
+        m_indexCount = 0;
+        return;
+    }
+
+    for (unsigned int i = 0; i < indexCount; ++i)
+    {
+        dst[i] = indices[i];
+    }
+
+    m_indexBuffer->commit(dst);
+
+    m_indexCount = indexCount;
+}
+
+
+void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
+{
+    std::vector<GS::SplatVertex> vertices;
+    vertices.reserve(m_splats.size() * (CircleSegments + 1));
+
+    m_boundingBox.clear();
+
+    for (const GS::GaussianSplat& splat : m_splats)
+    {
+        const float alpha = std::clamp(splat.opacity, 0.0f, 1.0f);
+
+        auto makeVertex =
+            [&](const MPoint& p, float u, float v) -> GS::SplatVertex
+            {
+                GS::SplatVertex vertex;
+
+                vertex.position[0] = static_cast<float>(p.x);
+                vertex.position[1] = static_cast<float>(p.y);
+                vertex.position[2] = static_cast<float>(p.z);
+
+                vertex.color[0] = splat.color.r;
+                vertex.color[1] = splat.color.g;
+                vertex.color[2] = splat.color.b;
+                vertex.color[3] = alpha;
+
+                vertex.uv[0] = u;
+                vertex.uv[1] = v;
+
+                return vertex;
+            };
+
+        const MVector rx(splat.scaleX / 10.0, 0.0, 0.0);
+        const MVector uy(0.0, splat.scaleY / 10.0, 0.0);
+
+        // Center
+        vertices.push_back(makeVertex(splat.center, 0.0f, 0.0f));
+        m_boundingBox.expand(splat.center);
+
+        // Circle rim
+        for (unsigned int i = 0; i < CircleSegments; ++i)
+        {
+            const float angle =
+                static_cast<float>(2.0 * M_PI * i / CircleSegments);
+
+            const float c = std::cos(angle);
+            const float s = std::sin(angle);
+
+            const MPoint p = splat.center + rx * c + uy * s;
+
+            vertices.push_back(makeVertex(p, c, s));
+            m_boundingBox.expand(p);
+        }
+    }
+
+    uploadVertexBuffers(vertices);
+
+    m_vertexCount = static_cast<unsigned int>(vertices.size());
+    m_vertexBufferDirty = false;
 }

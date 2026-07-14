@@ -32,40 +32,15 @@ struct TestPoint
 class GaussianSplattingLocator : public MPxLocatorNode
 {
 public:
-    GaussianSplattingLocator() { generateTestPoints(500); }
+	GaussianSplattingLocator() = default;
     static MTypeId id;
     static MObject locatorMsgAttr;
     static void* creator() { return new GaussianSplattingLocator(); }
     static MStatus initialize();
     MStatus connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc) override;
-    void generateTestPoints(int count)
-    {
-        std::mt19937 rng(1234);
-        std::uniform_real_distribution<float> posDist(-3.0f, 3.0f);
-        std::uniform_real_distribution<float> colDist(0.2f, 1.0f);
-
-        m_points.reserve(count);
-        for (int i = 0; i < count; ++i)
-        {
-            TestPoint p;
-            p.pos[0] = posDist(rng);
-            p.pos[1] = posDist(rng);
-            p.pos[2] = posDist(rng);
-            p.color[0] = colDist(rng);
-            p.color[1] = colDist(rng);
-            p.color[2] = colDist(rng);
-            p.color[3] = 1.0f;
-            m_points.push_back(p);
-        }
-    }
-
-    std::vector<TestPoint> m_points;
-    MBoundingBox boundingBox() const override
-    {
-        return MBoundingBox(MPoint(-5, -5, -5), MPoint(5, 5, 5));
-    }
+    
     bool isBounded() const override { return true; }
-    const std::vector<TestPoint>& points() const { return m_points; }
+
 
 };
 
@@ -143,17 +118,31 @@ private:
         const MPoint& cameraWorldPosition,
         const MVector& cameraWorldForward) const;
 
-    void buildGeometry(
-        const MPoint& cameraWorldPosition,
-        const MVector& cameraWorldRight,
-        const MVector& cameraWorldUp,
-        const MVector& cameraWorldForward);
-
     void buildVertexBuffer(
         const std::vector<GS::SplatVertex>& vertices);
 
     void buildIndexBuffer(
         const std::vector<unsigned int>& indices);
+
+
+    void buildStaticVertexBuffersOnce();
+
+    void rebuildSortedIndexBufferOnly(
+        const MPoint& cameraWorldPosition,
+        const MVector& cameraWorldForward);
+
+    bool cameraChangedEnoughForIndexRebuild(
+        const MPoint& cameraWorldPosition,
+        const MVector& cameraWorldForward) const;
+
+    void uploadVertexBuffers(
+        const std::vector<GS::SplatVertex>& vertices);
+
+    void uploadIndexBuffer(
+        const std::vector<unsigned int>& indices);
+
+
+
 
     static float depthFromCamera(
         const MPoint& worldPoint,
@@ -162,7 +151,7 @@ private:
 
 private:
     static const MString kRenderItemName;
-
+    unsigned int CircleSegments = 16;
     MObject m_nodeObj;
     MDagPath m_dagPath;
 
@@ -170,6 +159,8 @@ private:
     bool m_geometryDirty = true;
     bool m_shaderDirty = true;
     bool m_uiDirty = true;
+    bool m_vertexBufferDirty = true;   // Rebuild only when PLY/data changes.
+    bool m_indexBufferDirty = true;    // Rebuild when camera sorting changes.
 
     std::chrono::high_resolution_clock::time_point m_lastFrame;
     double m_fps = 0.0;
