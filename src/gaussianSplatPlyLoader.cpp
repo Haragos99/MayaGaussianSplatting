@@ -35,11 +35,17 @@ namespace
         PlyScalarType type = PlyScalarType::Invalid;
     };
 
+    struct PlyElement
+    {
+        std::string name;
+        std::size_t count = 0;
+        std::vector<PlyProperty> properties;
+    };
+
     struct PlyHeader
     {
         PlyFormat format = PlyFormat::Unknown;
-        std::size_t vertexCount = 0;
-        std::vector<PlyProperty> vertexProperties;
+        std::vector<PlyElement> elements;
     };
 
     static constexpr float kSHC0 = 0.28209479177387814f;
@@ -191,7 +197,7 @@ namespace
             return false;
         }
 
-        bool insideVertexElement = false;
+        int currentElementIndex = -1;
 
         while (std::getline(input, line))
         {
@@ -239,26 +245,20 @@ namespace
             }
             else if (token == "element")
             {
-                std::string elementName;
-                std::size_t elementCount = 0;
+                PlyElement element;
+                ss >> element.name >> element.count;
 
-                ss >> elementName >> elementCount;
-
-                insideVertexElement = elementName == "vertex";
-
-                if (insideVertexElement)
-                {
-                    header.vertexCount = elementCount;
-                }
+                header.elements.push_back(element);
+                currentElementIndex = static_cast<int>(header.elements.size()) - 1;
             }
-            else if (token == "property" && insideVertexElement)
+            else if (token == "property" && currentElementIndex >= 0)
             {
                 std::string typeName;
                 std::string propertyName;
 
                 ss >> typeName;
 
-                // This loader only supports scalar vertex properties.
+                // This loader only supports scalar properties.
                 // If the header says "property list ...", skip it.
                 if (typeName == "list")
                 {
@@ -281,7 +281,8 @@ namespace
                     return false;
                 }
 
-                header.vertexProperties.push_back(property);
+                header.elements[static_cast<std::size_t>(currentElementIndex)]
+                    .properties.push_back(property);
             }
         }
 
@@ -291,6 +292,19 @@ namespace
         }
 
         return false;
+    }
+
+    const PlyElement* findElement(const PlyHeader& header, const std::string& name)
+    {
+        for (const PlyElement& element : header.elements)
+        {
+            if (element.name == name)
+            {
+                return &element;
+            }
+        }
+
+        return nullptr;
     }
 
     int findPropertyIndex(
@@ -433,16 +447,16 @@ namespace
 
     bool readAsciiVertices(
         std::istream& input,
-        const PlyHeader& header,
+        const PlyElement& vertexElement,
         std::vector<GS::GaussianSplat>& outSplats,
         std::string* outError)
     {
         outSplats.clear();
-        outSplats.reserve(header.vertexCount);
+        outSplats.reserve(vertexElement.count);
 
         std::string line;
 
-        for (std::size_t vertexIndex = 0; vertexIndex < header.vertexCount; ++vertexIndex)
+        for (std::size_t vertexIndex = 0; vertexIndex < vertexElement.count; ++vertexIndex)
         {
             if (!std::getline(input, line))
             {
@@ -456,10 +470,10 @@ namespace
 
             std::istringstream ss(line);
             std::vector<double> values;
-            values.resize(header.vertexProperties.size(), 0.0);
+            values.resize(vertexElement.properties.size(), 0.0);
 
             for (std::size_t propertyIndex = 0;
-                propertyIndex < header.vertexProperties.size();
+                propertyIndex < vertexElement.properties.size();
                 ++propertyIndex)
             {
                 ss >> values[propertyIndex];
@@ -476,7 +490,7 @@ namespace
             }
 
             outSplats.push_back(
-                makeSplatFromProperties(values, header.vertexProperties));
+                makeSplatFromProperties(values, vertexElement.properties));
         }
 
         return true;
@@ -484,7 +498,7 @@ namespace
 
     bool readBinaryLittleEndianVertices(
         std::istream& input,
-        const PlyHeader& header,
+        const PlyElement& vertexElement,
         std::vector<GS::GaussianSplat>& outSplats,
         std::string* outError)
     {
@@ -499,18 +513,18 @@ namespace
         }
 
         outSplats.clear();
-        outSplats.reserve(header.vertexCount);
+        outSplats.reserve(vertexElement.count);
 
-        for (std::size_t vertexIndex = 0; vertexIndex < header.vertexCount; ++vertexIndex)
+        for (std::size_t vertexIndex = 0; vertexIndex < vertexElement.count; ++vertexIndex)
         {
             std::vector<double> values;
-            values.resize(header.vertexProperties.size(), 0.0);
+            values.resize(vertexElement.properties.size(), 0.0);
 
             for (std::size_t propertyIndex = 0;
-                propertyIndex < header.vertexProperties.size();
+                propertyIndex < vertexElement.properties.size();
                 ++propertyIndex)
             {
-                const PlyProperty& property = header.vertexProperties[propertyIndex];
+                const PlyProperty& property = vertexElement.properties[propertyIndex];
 
                 if (scalarTypeSize(property.type) == 0)
                 {
@@ -536,7 +550,326 @@ namespace
             }
 
             outSplats.push_back(
-                makeSplatFromProperties(values, header.vertexProperties));
+                makeSplatFromProperties(values, vertexElement.properties));
+        }
+
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // SuperSplat / PlayCanvas "compressed" PLY support.
+    //
+    // Layout:
+    //   element chunk  N   -> per-chunk min/max ranges (256 gaussians / chunk)
+    //   element vertex M   -> packed_position/rotation/scale/color (uint32 each)
+    //   element sh     M   -> optional higher-order SH (ignored here)
+    // ---------------------------------------------------------------------
+
+    constexpr std::size_t kCompressedChunkSize = 256;
+
+    bool isCompressedSuperSplat(const PlyHeader& header)
+    {
+        const PlyElement* chunk = findElement(header, "chunk");
+        const PlyElement* vertex = findElement(header, "vertex");
+
+        if (chunk == nullptr || vertex == nullptr)
+        {
+            return false;
+        }
+
+        return findPropertyIndex(vertex->properties, "packed_position") >= 0
+            && findPropertyIndex(vertex->properties, "packed_scale") >= 0
+            && findPropertyIndex(vertex->properties, "packed_color") >= 0;
+    }
+
+    // Read one element's records into a flat [record][property] value table.
+    bool readElementValues(
+        std::istream& input,
+        const PlyElement& element,
+        std::vector<std::vector<double>>& outRecords,
+        std::string* outError)
+    {
+        outRecords.assign(element.count, std::vector<double>(element.properties.size(), 0.0));
+
+        for (std::size_t record = 0; record < element.count; ++record)
+        {
+            for (std::size_t propertyIndex = 0;
+                propertyIndex < element.properties.size();
+                ++propertyIndex)
+            {
+                const PlyProperty& property = element.properties[propertyIndex];
+
+                if (scalarTypeSize(property.type) == 0)
+                {
+                    if (outError)
+                    {
+                        *outError = "Invalid binary PLY scalar property.";
+                    }
+
+                    return false;
+                }
+
+                outRecords[record][propertyIndex] = readBinaryScalar(input, property.type);
+
+                if (!input)
+                {
+                    if (outError)
+                    {
+                        *outError = "Unexpected end of binary PLY element data.";
+                    }
+
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    float lerp(float a, float b, float t)
+    {
+        return a + (b - a) * t;
+    }
+
+    // Unpack an 11/10/11-bit normalized triple from a 32-bit value.
+    void unpack111011(std::uint32_t value, float& x, float& y, float& z)
+    {
+        x = static_cast<float>((value >> 21) & 0x7FFu) / 2047.0f;
+        y = static_cast<float>((value >> 11) & 0x3FFu) / 1023.0f;
+        z = static_cast<float>(value & 0x7FFu) / 2047.0f;
+    }
+
+    bool readCompressedVertices(
+        std::istream& input,
+        const PlyHeader& header,
+        std::vector<GS::GaussianSplat>& outSplats,
+        std::string* outError)
+    {
+        if (header.format != PlyFormat::BinaryLittleEndian)
+        {
+            if (outError)
+            {
+                *outError = "Compressed SuperSplat PLY must be binary_little_endian.";
+            }
+
+            return false;
+        }
+
+        if (!isLittleEndianHost())
+        {
+            if (outError)
+            {
+                *outError = "Compressed PLY loading on big-endian CPU is not implemented.";
+            }
+
+            return false;
+        }
+
+        outSplats.clear();
+
+        // Elements are stored back-to-back in header order; read them in order.
+        std::vector<std::vector<double>> chunkRecords;
+        std::vector<std::vector<double>> vertexRecords;
+
+        const PlyElement* vertexElement = nullptr;
+        const PlyElement* chunkElement = nullptr;
+
+        for (const PlyElement& element : header.elements)
+        {
+            if (element.name == "chunk")
+            {
+                chunkElement = &element;
+
+                if (!readElementValues(input, element, chunkRecords, outError))
+                {
+                    return false;
+                }
+            }
+            else if (element.name == "vertex")
+            {
+                vertexElement = &element;
+
+                if (!readElementValues(input, element, vertexRecords, outError))
+                {
+                    return false;
+                }
+
+                // Everything after the vertex element (e.g. sh) is not needed
+                // for the billboard renderer, so we can stop reading here.
+                break;
+            }
+            else
+            {
+                // Skip any element preceding vertex that we do not consume.
+                std::vector<std::vector<double>> discard;
+
+                if (!readElementValues(input, element, discard, outError))
+                {
+                    return false;
+                }
+            }
+        }
+
+        if (vertexElement == nullptr || chunkElement == nullptr)
+        {
+            if (outError)
+            {
+                *outError = "Compressed PLY is missing chunk or vertex element.";
+            }
+
+            return false;
+        }
+
+        const std::vector<PlyProperty>& cp = chunkElement->properties;
+
+        const int cMinX = findPropertyIndex(cp, "min_x");
+        const int cMinY = findPropertyIndex(cp, "min_y");
+        const int cMinZ = findPropertyIndex(cp, "min_z");
+        const int cMaxX = findPropertyIndex(cp, "max_x");
+        const int cMaxY = findPropertyIndex(cp, "max_y");
+        const int cMaxZ = findPropertyIndex(cp, "max_z");
+
+        const int cMinSx = findPropertyIndex(cp, "min_scale_x");
+        const int cMinSy = findPropertyIndex(cp, "min_scale_y");
+        const int cMinSz = findPropertyIndex(cp, "min_scale_z");
+        const int cMaxSx = findPropertyIndex(cp, "max_scale_x");
+        const int cMaxSy = findPropertyIndex(cp, "max_scale_y");
+        const int cMaxSz = findPropertyIndex(cp, "max_scale_z");
+
+        const int cMinR = findPropertyIndex(cp, "min_r");
+        const int cMinG = findPropertyIndex(cp, "min_g");
+        const int cMinB = findPropertyIndex(cp, "min_b");
+        const int cMaxR = findPropertyIndex(cp, "max_r");
+        const int cMaxG = findPropertyIndex(cp, "max_g");
+        const int cMaxB = findPropertyIndex(cp, "max_b");
+
+        if (cMinX < 0 || cMinY < 0 || cMinZ < 0 || cMaxX < 0 || cMaxY < 0 || cMaxZ < 0)
+        {
+            if (outError)
+            {
+                *outError = "Compressed PLY chunk is missing position range properties.";
+            }
+
+            return false;
+        }
+
+        const std::vector<PlyProperty>& vp = vertexElement->properties;
+
+        const int vPos = findPropertyIndex(vp, "packed_position");
+        const int vScale = findPropertyIndex(vp, "packed_scale");
+        const int vColor = findPropertyIndex(vp, "packed_color");
+
+        if (vPos < 0 || vColor < 0)
+        {
+            if (outError)
+            {
+                *outError = "Compressed PLY vertex is missing packed_position/packed_color.";
+            }
+
+            return false;
+        }
+
+        outSplats.reserve(vertexRecords.size());
+
+        for (std::size_t i = 0; i < vertexRecords.size(); ++i)
+        {
+            const std::vector<double>& v = vertexRecords[i];
+
+            const std::size_t chunkIndex = i / kCompressedChunkSize;
+
+            if (chunkIndex >= chunkRecords.size())
+            {
+                if (outError)
+                {
+                    *outError = "Compressed PLY vertex references a missing chunk.";
+                }
+
+                return false;
+            }
+
+            const std::vector<double>& c = chunkRecords[chunkIndex];
+
+            GS::GaussianSplat splat;
+
+            // --- Position ---
+            {
+                float nx = 0.0f;
+                float ny = 0.0f;
+                float nz = 0.0f;
+                unpack111011(static_cast<std::uint32_t>(v[static_cast<std::size_t>(vPos)]), nx, ny, nz);
+
+                const float x = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinX)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxX)]), nx);
+                const float y = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinY)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxY)]), ny);
+                const float z = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinZ)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxZ)]), nz);
+
+                splat.center = MPoint(x, y, z);
+            }
+
+            // --- Scale (stored in log space, same as standard 3DGS) ---
+            float sx = 0.03f;
+            float sy = 0.03f;
+
+            if (vScale >= 0 && cMinSx >= 0 && cMinSy >= 0 && cMaxSx >= 0 && cMaxSy >= 0)
+            {
+                float nsx = 0.0f;
+                float nsy = 0.0f;
+                float nsz = 0.0f;
+                unpack111011(static_cast<std::uint32_t>(v[static_cast<std::size_t>(vScale)]), nsx, nsy, nsz);
+
+                const float logSx = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinSx)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxSx)]), nsx);
+                const float logSy = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinSy)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxSy)]), nsy);
+
+                sx = std::exp(logSx);
+                sy = std::exp(logSy);
+            }
+
+            sx = std::max(0.0001f, std::min(sx, 10.0f));
+            sy = std::max(0.0001f, std::min(sy, 10.0f));
+
+            // --- Color + opacity (packed_color = 8.8.8.8 RGBA) ---
+            const std::uint32_t packedColor =
+                static_cast<std::uint32_t>(v[static_cast<std::size_t>(vColor)]);
+
+            float r = static_cast<float>((packedColor >> 24) & 0xFFu) / 255.0f;
+            float g = static_cast<float>((packedColor >> 16) & 0xFFu) / 255.0f;
+            float b = static_cast<float>((packedColor >> 8) & 0xFFu) / 255.0f;
+            const float a = static_cast<float>(packedColor & 0xFFu) / 255.0f;
+
+            if (cMinR >= 0 && cMaxR >= 0 && cMinG >= 0 && cMaxG >= 0 && cMinB >= 0 && cMaxB >= 0)
+            {
+                r = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinR)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxR)]), r);
+                g = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinG)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxG)]), g);
+                b = lerp(
+                    static_cast<float>(c[static_cast<std::size_t>(cMinB)]),
+                    static_cast<float>(c[static_cast<std::size_t>(cMaxB)]), b);
+            }
+
+            r = clamp01(r);
+            g = clamp01(g);
+            b = clamp01(b);
+
+            const float opacity = clamp01(a);
+
+            splat.opacity = opacity;
+            splat.color = MColor(r, g, b, opacity);
+            splat.scaleX = sx;
+            splat.scaleY = sy;
+
+            outSplats.push_back(splat);
         }
 
         return true;
@@ -579,7 +912,22 @@ bool GaussianSplatPlyLoader::load(
         return false;
     }
 
-    if (header.vertexCount == 0)
+    // Compressed SuperSplat / PlayCanvas PLY (packed chunk/vertex/sh layout).
+    if (isCompressedSuperSplat(header))
+    {
+        if (!readCompressedVertices(input, header, outSplats, outError))
+        {
+            outSplats.clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    // Standard (uncompressed) PLY path.
+    const PlyElement* vertexElement = findElement(header, "vertex");
+
+    if (vertexElement == nullptr || vertexElement->count == 0)
     {
         if (outError)
         {
@@ -589,7 +937,7 @@ bool GaussianSplatPlyLoader::load(
         return false;
     }
 
-    if (header.vertexProperties.empty())
+    if (vertexElement->properties.empty())
     {
         if (outError)
         {
@@ -599,9 +947,9 @@ bool GaussianSplatPlyLoader::load(
         return false;
     }
 
-    const int idxX = findPropertyIndex(header.vertexProperties, "x");
-    const int idxY = findPropertyIndex(header.vertexProperties, "y");
-    const int idxZ = findPropertyIndex(header.vertexProperties, "z");
+    const int idxX = findPropertyIndex(vertexElement->properties, "x");
+    const int idxY = findPropertyIndex(vertexElement->properties, "y");
+    const int idxZ = findPropertyIndex(vertexElement->properties, "z");
 
     if (idxX < 0 || idxY < 0 || idxZ < 0)
     {
@@ -617,11 +965,11 @@ bool GaussianSplatPlyLoader::load(
 
     if (header.format == PlyFormat::Ascii)
     {
-        success = readAsciiVertices(input, header, outSplats, outError);
+        success = readAsciiVertices(input, *vertexElement, outSplats, outError);
     }
     else if (header.format == PlyFormat::BinaryLittleEndian)
     {
-        success = readBinaryLittleEndianVertices(input, header, outSplats, outError);
+        success = readBinaryLittleEndianVertices(input, *vertexElement, outSplats, outError);
     }
 
     if (!success)
