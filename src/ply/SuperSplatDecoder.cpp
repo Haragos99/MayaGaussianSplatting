@@ -48,9 +48,21 @@ namespace GS::Ply
             float& normalizedY,
             float& normalizedZ)
         {
-            normalizedX = static_cast<float>((packedValue >> 21) & 0x7FFu) / 2047.0f;
-            normalizedY = static_cast<float>((packedValue >> 11) & 0x3FFu) / 1023.0f;
-            normalizedZ = static_cast<float>(packedValue & 0x7FFu) / 2047.0f;
+            constexpr uint32_t X_MASK = 0x7FF; // 11 bits
+            constexpr uint32_t Y_MASK = 0x3FF; // 10 bits
+            constexpr uint32_t Z_MASK = 0x7FF; // 11 bits
+
+            constexpr float X_MAX = 2047.0f;
+            constexpr float Y_MAX = 1023.0f;
+            constexpr float Z_MAX = 2047.0f;
+
+            const uint32_t packedX = (packedValue >> 21) & X_MASK;
+            const uint32_t packedY = (packedValue >> 11) & Y_MASK;
+            const uint32_t packedZ = packedValue & Z_MASK;
+
+            normalizedX = static_cast<float>(packedX) / X_MAX;
+            normalizedY = static_cast<float>(packedY) / Y_MAX;
+            normalizedZ = static_cast<float>(packedZ) / Z_MAX;
         }
 
         void unpackRotation(
@@ -60,41 +72,67 @@ namespace GS::Ply
             float& rotationY,
             float& rotationZ)
         {
-            constexpr float kSqrtTwo = 1.4142135623730951f;
-            const float componentA = (static_cast<float>((packedValue >> 20) & 0x3FFu) / 1023.0f - 0.5f) * kSqrtTwo;
-            const float componentB = (static_cast<float>((packedValue >> 10) & 0x3FFu) / 1023.0f - 0.5f) * kSqrtTwo;
-            const float componentC = (static_cast<float>(packedValue & 0x3FFu) / 1023.0f - 0.5f) * kSqrtTwo;
-            const float omittedComponent = std::sqrt(std::max(
-                0.0f,
-                1.0f - componentA * componentA - componentB * componentB - componentC * componentC));
+            constexpr uint32_t COMPONENT_MASK = 0x3FFu; // 10 bits
+            constexpr float COMPONENT_MAX = 1023.0f;
+            constexpr float SQRT_TWO = 1.4142135623730951f;
 
-            switch (packedValue >> 30)
+            const uint32_t packedA = (packedValue >> 20) & COMPONENT_MASK;
+            const uint32_t packedB = (packedValue >> 10) & COMPONENT_MASK;
+            const uint32_t packedC = packedValue & COMPONENT_MASK;
+
+            const float componentA =
+                (static_cast<float>(packedA) / COMPONENT_MAX - 0.5f) * SQRT_TWO;
+
+            const float componentB =
+                (static_cast<float>(packedB) / COMPONENT_MAX - 0.5f) * SQRT_TWO;
+
+            const float componentC =
+                (static_cast<float>(packedC) / COMPONENT_MAX - 0.5f) * SQRT_TWO;
+
+            const float squaredSum =
+                componentA * componentA +
+                componentB * componentB +
+                componentC * componentC;
+
+            const float missingComponent =
+                std::sqrt(std::max(0.0f, 1.0f - squaredSum));
+
+            const uint32_t omittedComponentIndex = packedValue >> 30;
+
+
+            switch (omittedComponentIndex)
             {
             case 0:
-                rotationW = omittedComponent;
+                rotationW = missingComponent;
                 rotationX = componentA;
                 rotationY = componentB;
                 rotationZ = componentC;
                 break;
+
             case 1:
                 rotationW = componentA;
-                rotationX = omittedComponent;
+                rotationX = missingComponent;
                 rotationY = componentB;
                 rotationZ = componentC;
                 break;
+
             case 2:
                 rotationW = componentA;
                 rotationX = componentB;
-                rotationY = omittedComponent;
+                rotationY = missingComponent;
                 rotationZ = componentC;
                 break;
+
+            case 3:
             default:
                 rotationW = componentA;
                 rotationX = componentB;
                 rotationY = componentC;
-                rotationZ = omittedComponent;
+                rotationZ = missingComponent;
                 break;
             }
+
+
         }
     }
 
@@ -186,6 +224,7 @@ namespace GS::Ply
             splat.scale[2] = std::max(0.0001f, std::min(scaleZ, 10.0f));
             splat.scaleX = splat.scale[0];
             splat.scaleY = splat.scale[1];
+			splat.scaleZ = splat.scale[2];
 
             const std::uint32_t colorValue = getPackedValue(vertexRecord, packedColorIndex);
             const float red = clamp01(lerp(getRangeValue(chunkRecord, chunkProperties, "r", false, 0.0f), getRangeValue(chunkRecord, chunkProperties, "r", true, 1.0f), static_cast<float>((colorValue >> 24) & 0xFFu) / 255.0f));

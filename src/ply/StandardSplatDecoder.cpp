@@ -75,8 +75,14 @@ namespace GS::Ply
             }
 
             float opacity = 1.0f;
-            if (opacityIndex >= 0) opacity = sigmoid(static_cast<float>(getProperty(record, opacityIndex)));
-            else if (alphaIndex >= 0) opacity = clamp01(static_cast<float>(getProperty(record, alphaIndex)) / 255.0f);
+            if (opacityIndex >= 0) 
+            {
+                opacity = sigmoid(static_cast<float>(getProperty(record, opacityIndex)));
+            }
+            else if (alphaIndex >= 0) 
+            {
+                opacity = clamp01(static_cast<float>(getProperty(record, alphaIndex)) / 255.0f); 
+            }
 
             float scaleX = 0.03f;
             float scaleY = 0.03f;
