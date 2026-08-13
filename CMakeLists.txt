@@ -53,7 +53,13 @@ add_library(MayaGaussianSplatting SHARED
  "src/gaussiansplattingnode.cpp" 
  "src/gaussiansplattingdraweriverrider.h" 
  "src/gaussiansplattingdraweriverrider.cpp"
- "src/data.h" "src/gaussianSplatPlyLoader.h" "src/gaussianSplatPlyLoader.cpp")
+ "src/data.h" "src/gaussianSplatPlyLoader.h" "src/gaussianSplatPlyLoader.cpp"
+ "src/ply/PlyTypes.h"
+ "src/ply/PlyHeaderParser.h" "src/ply/PlyHeaderParser.cpp"
+ "src/ply/PlyElementReader.h" "src/ply/PlyElementReader.cpp"
+ "src/ply/SplatDecoder.h"
+ "src/ply/StandardSplatDecoder.h" "src/ply/StandardSplatDecoder.cpp"
+ "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp")
 
 
 # Include directories

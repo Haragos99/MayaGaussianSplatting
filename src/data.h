@@ -43,6 +43,8 @@ namespace GS
         float scaleX;       // Billboard half-size X.
         float scaleY;       // Billboard half-size Y.
         float opacity;      // 0..1.
+        float scale[3] = { 0.03f, 0.03f, 0.03f };   // Full 3D scale (linear).
+        float rotation[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // Quaternion (w, x, y, z), normalized.
     };
 
     struct SplatVertex
