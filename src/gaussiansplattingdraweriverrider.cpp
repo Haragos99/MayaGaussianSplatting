@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include "gaussianSplatPlyLoader.h"
+#include <maya/MQuaternion.h>
 
 MTypeId GaussianSplattingLocator::id(0x7802aaaa);
 MObject GaussianSplattingLocator::locatorMsgAttr;
@@ -891,18 +892,134 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
         vertices.push_back(makeVertex(splat.center, 0.0f, 0.0f));
         m_boundingBox.expand(splat.center);
 
-        // Circle rim
+        
+        MQuaternion q(splat.rotation[0], splat.rotation[1], splat.rotation[2], splat.rotation[3]);
+        q.normalizeIt();
+        MMatrix R = q.asMatrix();
+        MMatrix S;
+        S.setToIdentity();
+
+        S[0][0] = splat.scaleX;
+        S[1][1] = splat.scaleY;
+        S[2][2] = splat.scaleZ;
+
+        
+        MMatrix covariance = R * S * S.transpose() * R.transpose();
+
+        MPoint cameraPosition;
+        MVector cameraRight;
+        MVector cameraUp;
+        MVector cameraForward;
+
+        readCamera(
+            cameraPosition,
+            cameraRight,
+            cameraUp,
+            cameraForward
+        );
+
+        MVector r = cameraRight;
+        MVector u = cameraUp;
+
+        const double c00 =
+            r.x * (covariance[0][0] * r.x +
+                covariance[0][1] * r.y +
+                covariance[0][2] * r.z) +
+            r.y * (covariance[1][0] * r.x +
+                covariance[1][1] * r.y +
+                covariance[1][2] * r.z) +
+            r.z * (covariance[2][0] * r.x +
+                covariance[2][1] * r.y +
+                covariance[2][2] * r.z);
+
+        const double c01 =
+            r.x * (covariance[0][0] * u.x +
+                covariance[0][1] * u.y +
+                covariance[0][2] * u.z) +
+            r.y * (covariance[1][0] * u.x +
+                covariance[1][1] * u.y +
+                covariance[1][2] * u.z) +
+            r.z * (covariance[2][0] * u.x +
+                covariance[2][1] * u.y +
+                covariance[2][2] * u.z);
+
+        const double c11 =
+            u.x * (covariance[0][0] * u.x +
+                covariance[0][1] * u.y +
+                covariance[0][2] * u.z) +
+            u.y * (covariance[1][0] * u.x +
+                covariance[1][1] * u.y +
+                covariance[1][2] * u.z) +
+            u.z * (covariance[2][0] * u.x +
+                covariance[2][1] * u.y +
+                covariance[2][2] * u.z);
+
+        const double trace = c00 + c11;
+        const double diff = c00 - c11;
+
+        const double discriminant =
+            std::sqrt(diff * diff + 4.0 * c01 * c01);
+
+        const double lambda1 =
+            0.5 * (trace + discriminant);
+
+        const double lambda2 =
+            0.5 * (trace - discriminant);
+
+
+        const double sigma1 =
+            std::sqrt(std::max(0.0, lambda1));
+
+        const double sigma2 =
+            std::sqrt(std::max(0.0, lambda2));
+
+
+        const double angle =
+            0.5 * std::atan2(
+                2.0 * c01,
+                c00 - c11
+            );
+
+
+        const double ca = std::cos(angle);
+        const double sa = std::sin(angle);
+
+
+        MVector ellipseRight =
+            cameraRight * ca +
+            cameraUp * sa;
+
+        MVector ellipseUp =
+            cameraRight * -sa +
+            cameraUp * ca;
+
+        const float sigmaScale = 3.0f;
+
+        const MVector axisX =
+            ellipseRight * (sigma1 * sigmaScale);
+
+        const MVector axisY =
+            ellipseUp * (sigma2 * sigmaScale);
+
         for (unsigned int i = 0; i < CircleSegments; ++i)
         {
             const float angle =
-                static_cast<float>(2.0 * M_PI * i / CircleSegments);
+                static_cast<float>(
+                    2.0 * M_PI * i / CircleSegments
+                    );
 
             const float c = std::cos(angle);
             const float s = std::sin(angle);
 
-            const MPoint p = splat.center + rx * c + uy * s;
+            const MPoint p =
+                splat.center +
+                axisX * c +
+                axisY * s;
 
-            vertices.push_back(makeVertex(p, c, s));
+            vertices.push_back(
+                makeVertex(p, c, s)
+            );
+
             m_boundingBox.expand(p);
         }
     }
