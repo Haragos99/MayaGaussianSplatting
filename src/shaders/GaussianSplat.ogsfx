@@ -1,0 +1,121 @@
+uniform mat4 gMVP : WorldViewProjection;
+
+
+
+// Vertex shader input
+attribute vs_input
+{
+    vec3 inPosition : POSITION;
+    vec4 inColor    : COLOR0;
+    vec2 inUV       : TEXCOORD0;
+};
+
+
+
+// Vertex shader output / fragment shader input
+attribute vs_to_ps
+{
+    vec4 color;
+    vec2 uv;
+};
+
+
+// Fragment shader output
+attribute fs_out
+{
+    vec4 out_color : COLOR0;
+};
+
+
+// Vertex shader
+GLSLShader VS
+{
+    void main()
+    {
+        gl_Position =
+            gMVP *
+            vec4(inPosition, 1.0);
+
+        color = inColor;
+
+        uv = inUV;
+    }
+}
+
+
+
+// Fragment shader
+GLSLShader FS
+{
+    void main()
+    {
+
+        float r2 =
+            dot(uv, uv);
+
+        // Outside the splat.
+
+        if (r2 > 1.0)
+        {
+            discard;
+        }
+
+
+        // ------------------------------------------------------------
+        // Gaussian.
+        //
+        // Center:
+        //     r2 = 0
+        //     gaussian = 1
+        //
+        // Further from center:
+        //     gaussian decreases smoothly.
+        // ------------------------------------------------------------
+
+        float gaussian =
+            exp(-0.5 * r2);
+
+
+        // Apply Gaussian to the original opacity.
+        float alpha =
+            color.a *
+            gaussian;
+
+
+        // Remove almost invisible pixels.-
+        if (alpha < 0.001)
+        {
+            discard;
+        }
+
+
+        // Final color.
+        out_color =
+            vec4(
+                color.rgb,
+                alpha
+            );
+    }
+}
+
+
+
+// Technique
+
+technique Main
+{
+    pass p0
+    {
+        VertexShader
+        (
+            in vs_input,
+            out vs_to_ps
+        ) = VS;
+
+        PixelShader
+        (
+            in vs_to_ps,
+            out fs_out
+        ) = FS;
+    }
+}

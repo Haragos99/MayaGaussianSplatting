@@ -120,9 +120,9 @@ void GaussianSplattingSubSceneOverride::update(
         createShader();
     }
 
-    if (m_shader)
+    if (m_splatShader)
     {
-        item->setShader(m_shader);
+        item->setShader(m_splatShader);
     }
 
     MPoint cameraPosition;
@@ -309,7 +309,7 @@ void GaussianSplattingSubSceneOverride::createOrUpdateRenderItem(
     {
         item = MRenderItem::Create(
             kRenderItemName,
-            MRenderItem::MaterialSceneItem,
+            MRenderItem::DecorationItem,
             MGeometry::kTriangles);
 
         if (!item)
@@ -345,17 +345,114 @@ void GaussianSplattingSubSceneOverride::createShader()
         return;
     }
 
+
+    auto api =
+        renderer->drawAPI();
+
+    if (api != MHWRender::kOpenGLCoreProfile)
+    {
+        MGlobal::displayError(
+            "GaussianSplat.ogsfx requires "
+            "Maya OpenGL Core Profile."
+        );
+
+        return;
+    }
+
+    MStringArray techniques;
+
+     
+        shaderManager->getEffectsTechniques(
+            "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\src\\shaders\\GaussianSplat.ogsfx",
+            techniques,
+            nullptr,
+            0,
+            false
+        );
+
+
+        if (techniques.length() == 0)
+        {
+            MGlobal::displayError(
+                "Maya found no techniques in GaussianSplat.ogsfx."
+            );
+
+            MGlobal::displayError(
+                shaderManager->getLastError()
+            );
+
+            MGlobal::displayError(
+                shaderManager->getLastErrorSource(
+                    true,
+                    true,
+                    10
+                )
+            );
+
+            return;
+        };
+    
+        MGlobal::displayInfo(
+            "GaussianSplat.ogsfx techniques:"
+        );
+
+
+        for (unsigned int i = 0;
+            i < techniques.length();
+            ++i)
+        {
+            MGlobal::displayInfo(
+                "  " + techniques[i]
+            );
+        }
+
+
+        m_splatShader =
+            shaderManager->getEffectsFileShader(
+                "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\src\\shaders\\GaussianSplat.ogsfx",
+                "Main",
+                nullptr,
+                0,
+                false
+            );
+
+
+        if (!m_splatShader)
+        {
+            MGlobal::displayError(
+                "getEffectsFileShader() returned null."
+            );
+
+            MGlobal::displayError(
+                shaderManager->getLastError()
+            );
+
+            MGlobal::displayError(
+                shaderManager->getLastErrorSource(
+                    true,
+                    true,
+                    10
+                )
+            );
+
+            return;
+        }
+
+    MGlobal::displayInfo(
+        "Gaussian splat OGSFX shader loaded."
+    );
+
     // Simple stock shader fallback.
     // For real Gaussian splatting, replace this with an effect/custom shader
     // that reads UV/color streams and computes:
     //
     //     alpha = exp(-dot(uv, uv) * falloff) * opacity
     //
-    m_shader = shaderManager->getStockShader(MShaderManager::k3dCPVSolidShader);
+   // m_shader = shaderManager->getStockShader(MShaderManager::k3dCPVSolidShader);
     if (m_shader)
     {
         float solidColor[4] = { 0.0f, 1.0f, 0.8f, 0.45f };
-        m_shader->setParameter("solidColor", solidColor);
+       // m_shader->setParameter("solidColor", solidColor);
     }
 }
 

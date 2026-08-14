@@ -200,6 +200,9 @@ private:
 
     std::vector<GS::GaussianSplat> m_splats;
 
+
+    MHWRender::MShaderInstance* m_splatShader = nullptr;
+
     MBoundingBox m_boundingBox;
 
     std::unique_ptr<MHWRender::MVertexBuffer> m_positionBuffer;
