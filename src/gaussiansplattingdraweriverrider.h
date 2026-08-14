@@ -150,6 +150,39 @@ private:
         const MVector& cameraWorldForward);
 
 private:
+
+    void buildSplatVertices(
+        const GS::GaussianSplat& splat,
+        const MVector& cameraRight,
+        const MVector& cameraUp,
+        std::vector<GS::SplatVertex>& vertices);
+    
+    MMatrix buildCovariance(const GS::GaussianSplat& splat) const;
+
+    MMatrix projectCovarianceToCamera(
+        const MMatrix& covariance,
+        const MVector& cameraRight,
+        const MVector& cameraUp) const;
+
+    double covarianceQuadraticForm(
+        const MMatrix& covariance,
+        const MVector& v,
+        const MVector& w) const;
+
+    ProjectedEllipse calculateEllipseAxes(
+        const MMatrix& covariance2D,
+        const MVector& cameraRight,
+        const MVector& cameraUp,
+        double sigmaMultiplier) const;
+
+
+    void appendSplatQuad(
+        const GS::GaussianSplat& splat,
+        const MVector& axisX,
+        const MVector& axisY,
+        std::vector<GS::SplatVertex>& vertices);
+
+
     static const MString kRenderItemName;
     unsigned int CircleSegments = 16;
     MObject m_nodeObj;

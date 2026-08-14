@@ -636,63 +636,113 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
     const MPoint& cameraWorldPosition,
     const MVector& cameraWorldForward)
 {
+    // Create splat IDs
     std::vector<unsigned int> sortedSplatIds;
     sortedSplatIds.reserve(m_splats.size());
 
-    for (unsigned int i = 0; i < static_cast<unsigned int>(m_splats.size()); ++i)
+    for (unsigned int i = 0;
+        i < static_cast<unsigned int>(m_splats.size());
+        ++i)
     {
         sortedSplatIds.push_back(i);
     }
 
+
+    // Object -> world matrix
     MMatrix objectToWorld;
 
     if (m_dagPath.isValid())
     {
-        objectToWorld = m_dagPath.inclusiveMatrix();
+        objectToWorld =
+            m_dagPath.inclusiveMatrix();
     }
 
+
+    // Sort splats back-to-front
+    //
+    // Important for alpha blending.
     std::sort(
         sortedSplatIds.begin(),
         sortedSplatIds.end(),
         [&](unsigned int a, unsigned int b)
         {
-            const MPoint worldA = m_splats[a].center * objectToWorld;
-            const MPoint worldB = m_splats[b].center * objectToWorld;
+            const MPoint worldA =
+                m_splats[a].center * objectToWorld;
 
-            return depthFromCamera(
-                worldA,
-                cameraWorldPosition,
-                cameraWorldForward)
-    >
+            const MPoint worldB =
+                m_splats[b].center * objectToWorld;
+
+            const double depthA =
+                depthFromCamera(
+                    worldA,
+                    cameraWorldPosition,
+                    cameraWorldForward
+                );
+
+            const double depthB =
                 depthFromCamera(
                     worldB,
                     cameraWorldPosition,
-                    cameraWorldForward);
-        });
+                    cameraWorldForward
+                );
+
+            return depthA > depthB;
+        }
+    );
+
+
+    // Each splat now has exactly:
+    //     6 vertices
+    // representing:
+    //     triangle 1: 0,1,2
+    //     triangle 2: 3,4,5
+    // Therefore:
+    //     indices per splat = 6
+    constexpr unsigned int VerticesPerSplat = 6;
 
     std::vector<unsigned int> indices;
-    indices.reserve(m_splats.size() * CircleSegments * 3);
+
+    indices.reserve(
+        m_splats.size() * VerticesPerSplat
+    );
+
 
     for (unsigned int splatId : sortedSplatIds)
     {
-        const unsigned int base = splatId * (CircleSegments + 1);
+        const unsigned int base =
+            splatId * VerticesPerSplat;
 
-        for (unsigned int i = 0; i < CircleSegments; ++i)
-        {
-            indices.push_back(base);
-            indices.push_back(base + 1 + i);
-            indices.push_back(base + 1 + ((i + 1) % CircleSegments));
-        }
+
+        // Triangle 1
+        indices.push_back(base + 0);
+        indices.push_back(base + 1);
+        indices.push_back(base + 2);
+
+
+        // Triangle 2
+        indices.push_back(base + 3);
+        indices.push_back(base + 4);
+        indices.push_back(base + 5);
     }
 
     uploadIndexBuffer(indices);
 
-    m_indexCount = static_cast<unsigned int>(indices.size());
+    m_indexCount =
+        static_cast<unsigned int>(
+            indices.size()
+            );
+
     m_indexBufferDirty = false;
 
+
+    // Save camera state
     m_haveLastCamera = true;
-    m_lastCameraPosition = cameraWorldPosition;
-    m_lastCameraForward = cameraWorldForward;
+
+    m_lastCameraPosition =
+        cameraWorldPosition;
+
+    m_lastCameraForward =
+        cameraWorldForward;
 }
 
 
@@ -858,17 +908,12 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
 {
     std::vector<GS::SplatVertex> vertices;
 
-    // Two triangles = six vertices per Gaussian splat.
+    // Two triangles / 6 vertices per splat.
     vertices.reserve(m_splats.size() * 6);
 
     m_boundingBox.clear();
 
-    // -------------------------------------------------------------------------
-    // Camera
-    //
-    // Read this once. It is the same camera for every splat.
-    // -------------------------------------------------------------------------
-
+    // Camera is common to all splats.
     MPoint cameraPosition;
     MVector cameraRight;
     MVector cameraUp;
@@ -885,413 +930,435 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
     cameraUp.normalize();
     cameraForward.normalize();
 
-
-    // -------------------------------------------------------------------------
-    // Build every Gaussian splat
-    // -------------------------------------------------------------------------
-
     for (const GS::GaussianSplat& splat : m_splats)
     {
-        const float alpha =
-            std::clamp(splat.opacity, 0.0f, 1.0f);
-
-
-        // ---------------------------------------------------------------------
-        // Helper for creating a vertex
-        // ---------------------------------------------------------------------
-
-        auto makeVertex =
-            [&](const MPoint& position,
-                float u,
-                float v) -> GS::SplatVertex
-            {
-                GS::SplatVertex vertex{};
-
-                vertex.position[0] =
-                    static_cast<float>(position.x);
-
-                vertex.position[1] =
-                    static_cast<float>(position.y);
-
-                vertex.position[2] =
-                    static_cast<float>(position.z);
-
-
-                vertex.color[0] = splat.color.r;
-                vertex.color[1] = splat.color.g;
-                vertex.color[2] = splat.color.b;
-                vertex.color[3] = alpha;
-
-
-                vertex.uv[0] = u;
-                vertex.uv[1] = v;
-
-                return vertex;
-            };
-
-
-        // ---------------------------------------------------------------------
-        // 1. Quaternion
-        //
-        // Your rotation array appears to be:
-        //
-        //     [x, y, z, w]
-        //
-        // because you're constructing MQuaternion with those four values.
-        //
-        // Maya:
-        //
-        //     MQuaternion(x, y, z, w)
-        // ---------------------------------------------------------------------
-
-        MQuaternion q(
-            splat.rotation[0],
-            splat.rotation[1],
-            splat.rotation[2],
-            splat.rotation[3]
+        buildSplatVertices(
+            splat,
+            cameraRight,
+            cameraUp,
+            vertices
         );
-
-        q.normalizeIt();
-
-
-        // ---------------------------------------------------------------------
-        // 2. Quaternion -> rotation matrix
-        // ---------------------------------------------------------------------
-
-        const MMatrix R = q.asMatrix();
-
-
-        // ---------------------------------------------------------------------
-        // 3. Gaussian covariance
-        //
-        //     Sigma = R * S * S^T * R^T
-        //
-        // Since S is diagonal, this can be simplified to:
-        //
-        //     Sigma = R * diag(sx^2, sy^2, sz^2) * R^T
-        //
-        // This is the covariance of the 3D Gaussian.
-        // ---------------------------------------------------------------------
-
-        MMatrix covariance;
-        covariance.setToIdentity();
-
-        covariance[0][0] =
-            static_cast<double>(splat.scaleX) *
-            static_cast<double>(splat.scaleX);
-
-        covariance[1][1] =
-            static_cast<double>(splat.scaleY) *
-            static_cast<double>(splat.scaleY);
-
-        covariance[2][2] =
-            static_cast<double>(splat.scaleZ) *
-            static_cast<double>(splat.scaleZ);
-
-        covariance =
-            R *
-            covariance *
-            R.transpose();
-
-
-        // ---------------------------------------------------------------------
-        // 4. Project the 3D covariance onto the camera plane
-        //
-        // Camera plane:
-        //
-        //     X = cameraRight
-        //     Y = cameraUp
-        //
-        // Result:
-        //
-        //     [ c00  c01 ]
-        //     [ c01  c11 ]
-        // ---------------------------------------------------------------------
-
-        const MVector& r = cameraRight;
-        const MVector& u = cameraUp;
-
-
-        const double c00 =
-            r.x * (
-                covariance[0][0] * r.x +
-                covariance[0][1] * r.y +
-                covariance[0][2] * r.z
-                )
-            +
-            r.y * (
-                covariance[1][0] * r.x +
-                covariance[1][1] * r.y +
-                covariance[1][2] * r.z
-                )
-            +
-            r.z * (
-                covariance[2][0] * r.x +
-                covariance[2][1] * r.y +
-                covariance[2][2] * r.z
-                );
-
-
-        const double c01 =
-            r.x * (
-                covariance[0][0] * u.x +
-                covariance[0][1] * u.y +
-                covariance[0][2] * u.z
-                )
-            +
-            r.y * (
-                covariance[1][0] * u.x +
-                covariance[1][1] * u.y +
-                covariance[1][2] * u.z
-                )
-            +
-            r.z * (
-                covariance[2][0] * u.x +
-                covariance[2][1] * u.y +
-                covariance[2][2] * u.z
-                );
-
-
-        const double c11 =
-            u.x * (
-                covariance[0][0] * u.x +
-                covariance[0][1] * u.y +
-                covariance[0][2] * u.z
-                )
-            +
-            u.y * (
-                covariance[1][0] * u.x +
-                covariance[1][1] * u.y +
-                covariance[1][2] * u.z
-                )
-            +
-            u.z * (
-                covariance[2][0] * u.x +
-                covariance[2][1] * u.y +
-                covariance[2][2] * u.z
-                );
-
-
-        // ---------------------------------------------------------------------
-        // 5. Eigen decomposition of the 2D covariance
-        //
-        // This gives us the two axes of the projected ellipse.
-        // ---------------------------------------------------------------------
-
-        const double trace = c00 + c11;
-        const double diff = c00 - c11;
-
-        const double discriminant =
-            std::sqrt(
-                std::max(
-                    0.0,
-                    diff * diff +
-                    4.0 * c01 * c01
-                )
-            );
-
-
-        const double lambdaMajor =
-            0.5 * (trace + discriminant);
-
-        const double lambdaMinor =
-            0.5 * (trace - discriminant);
-
-
-        // ---------------------------------------------------------------------
-        // 6. Eigenvalues are variances.
-        //
-        // sqrt(variance) = standard deviation.
-        // ---------------------------------------------------------------------
-
-        const double sigmaMajor =
-            std::sqrt(
-                std::max(
-                    0.0,
-                    lambdaMajor
-                )
-            );
-
-        const double sigmaMinor =
-            std::sqrt(
-                std::max(
-                    0.0,
-                    lambdaMinor
-                )
-            );
-
-
-        // ---------------------------------------------------------------------
-        // 7. Orientation of the projected ellipse
-        // ---------------------------------------------------------------------
-
-        const double ellipseAngle =
-            0.5 * std::atan2(
-                2.0 * c01,
-                c00 - c11
-            );
-
-
-        const double cosAngle =
-            std::cos(ellipseAngle);
-
-        const double sinAngle =
-            std::sin(ellipseAngle);
-
-
-        // ---------------------------------------------------------------------
-        // 8. Build the two ellipse axes in world space
-        // ---------------------------------------------------------------------
-
-        MVector ellipseAxisX =
-            cameraRight * cosAngle +
-            cameraUp * sinAngle;
-
-        MVector ellipseAxisY =
-            cameraRight * -sinAngle +
-            cameraUp * cosAngle;
-
-        ellipseAxisX.normalize();
-        ellipseAxisY.normalize();
-
-
-        // ---------------------------------------------------------------------
-        // 9. Choose Gaussian extent
-        //
-        // 3 sigma gives a useful visualization of the Gaussian.
-        //
-        // The shader will still evaluate the Gaussian inside this quad.
-        // ---------------------------------------------------------------------
-
-        constexpr double sigmaMultiplier = 3.0;
-
-        ellipseAxisX *=
-            sigmaMajor * sigmaMultiplier;
-
-        ellipseAxisY *=
-            sigmaMinor * sigmaMultiplier;
-
-
-        // ---------------------------------------------------------------------
-        // 10. Build a camera-facing quad
-        //
-        // Instead of:
-        //
-        //     center + axisX * cos(angle)
-        //             + axisY * sin(angle)
-        //
-        // we create only four corners.
-        //
-        // The fragment shader will make this quad look like a Gaussian.
-        // ---------------------------------------------------------------------
-
-        const MPoint center = splat.center;
-
-
-        const MPoint bottomLeft =
-            center -
-            ellipseAxisX -
-            ellipseAxisY;
-
-        const MPoint bottomRight =
-            center +
-            ellipseAxisX -
-            ellipseAxisY;
-
-        const MPoint topRight =
-            center +
-            ellipseAxisX +
-            ellipseAxisY;
-
-        const MPoint topLeft =
-            center -
-            ellipseAxisX +
-            ellipseAxisY;
-
-
-        // ---------------------------------------------------------------------
-        // 11. Two triangles
-        //
-        // UV coordinates are in [-1, +1].
-        //
-        // The shader can use:
-        //
-        //     r2 = u*u + v*v
-        //
-        // to evaluate the Gaussian.
-        // ---------------------------------------------------------------------
-
-        vertices.push_back(
-            makeVertex(
-                bottomLeft,
-                -1.0f,
-                -1.0f
-            )
-        );
-
-        vertices.push_back(
-            makeVertex(
-                bottomRight,
-                1.0f,
-                -1.0f
-            )
-        );
-
-        vertices.push_back(
-            makeVertex(
-                topRight,
-                1.0f,
-                1.0f
-            )
-        );
-
-
-        vertices.push_back(
-            makeVertex(
-                bottomLeft,
-                -1.0f,
-                -1.0f
-            )
-        );
-
-        vertices.push_back(
-            makeVertex(
-                topRight,
-                1.0f,
-                1.0f
-            )
-        );
-
-        vertices.push_back(
-            makeVertex(
-                topLeft,
-                -1.0f,
-                1.0f
-            )
-        );
-
-
-        // ---------------------------------------------------------------------
-        // 12. Bounding box
-        // ---------------------------------------------------------------------
-
-        m_boundingBox.expand(bottomLeft);
-        m_boundingBox.expand(bottomRight);
-        m_boundingBox.expand(topRight);
-        m_boundingBox.expand(topLeft);
     }
-
-
-    // -------------------------------------------------------------------------
-    // Upload GPU buffer
-    // -------------------------------------------------------------------------
 
     uploadVertexBuffers(vertices);
 
     m_vertexCount =
-        static_cast<unsigned int>(
-            vertices.size()
-            );
+        static_cast<unsigned int>(vertices.size());
 
     m_vertexBufferDirty = false;
+}
+
+void GaussianSplattingSubSceneOverride::buildSplatVertices(
+    const GS::GaussianSplat& splat,
+    const MVector& cameraRight,
+    const MVector& cameraUp,
+    std::vector<GS::SplatVertex>& vertices)
+{
+
+    // Build covariance from rotation + scale.
+    const MMatrix covariance =
+        buildCovariance(splat);
+
+
+    // Project the 3D covariance onto the camera plane.
+    const MMatrix covariance2D =
+        projectCovarianceToCamera(
+            covariance,
+            cameraRight,
+            cameraUp
+        );
+
+
+    // Convert the 2D covariance into ellipse axes.
+    constexpr double sigmaMultiplier = 3.0;
+
+    const ProjectedEllipse ellipse =
+        calculateEllipseAxes(
+            covariance2D,
+            cameraRight,
+            cameraUp,
+            sigmaMultiplier
+        );
+
+
+    // Create the actual quad.
+    appendSplatQuad(
+        splat,
+        ellipse.axisX,
+        ellipse.axisY,
+        vertices
+    );
+}
+
+// Build 3D Gaussian covariance
+// Sigma = R * S * S^T * R^T
+MMatrix GaussianSplattingSubSceneOverride::buildCovariance(
+    const GS::GaussianSplat& splat) const
+{
+    MQuaternion q(
+        splat.rotation[0],
+        splat.rotation[1],
+        splat.rotation[2],
+        splat.rotation[3]
+    );
+
+    q.normalizeIt();
+
+
+    // Rotation matrix
+    const MMatrix rotation =
+        q.asMatrix();
+
+
+	// S^2 diagonal matrix
+    // Instead of explicitly creating:
+    // S * S.transpose()
+    // directly create:
+    // diag(sx^2, sy^2, sz^2)
+
+    MMatrix scaleSquared;
+    scaleSquared.setToIdentity();
+
+    const double sx =
+        static_cast<double>(splat.scaleX);
+
+    const double sy =
+        static_cast<double>(splat.scaleY);
+
+    const double sz =
+        static_cast<double>(splat.scaleZ);
+
+    scaleSquared[0][0] = sx * sx;
+    scaleSquared[1][1] = sy * sy;
+    scaleSquared[2][2] = sz * sz;
+
+
+    // Covariance
+    return
+        rotation *
+        scaleSquared *
+        rotation.transpose();
+}
+
+
+// Project 3D covariance into camera plane
+//
+// Returns:
+//
+//     [ c00  c01 ]
+//     [ c01  c11 ]
+//
+// Stored in the upper-left 2x2 portion of an MMatrix.
+
+MMatrix GaussianSplattingSubSceneOverride::projectCovarianceToCamera(
+    const MMatrix& covariance,
+    const MVector& cameraRight,
+    const MVector& cameraUp) const
+{
+    const double c00 =
+        covarianceQuadraticForm(
+            covariance,
+            cameraRight,
+            cameraRight
+        );
+
+
+    const double c01 =
+        covarianceQuadraticForm(
+            covariance,
+            cameraRight,
+            cameraUp
+        );
+
+
+    const double c11 =
+        covarianceQuadraticForm(
+            covariance,
+            cameraUp,
+            cameraUp
+        );
+
+
+    MMatrix covariance2D;
+    covariance2D.setToIdentity();
+
+    covariance2D[0][0] = c00;
+    covariance2D[0][1] = c01;
+    covariance2D[1][0] = c01;
+    covariance2D[1][1] = c11;
+
+    return covariance2D;
+}
+
+
+// Calculate v^T * Sigma * w
+double GaussianSplattingSubSceneOverride::covarianceQuadraticForm(
+    const MMatrix& covariance,
+    const MVector& v,
+    const MVector& w) const
+{
+    return
+        v.x * (
+            covariance[0][0] * w.x +
+            covariance[0][1] * w.y +
+            covariance[0][2] * w.z
+            )
+        +
+        v.y * (
+            covariance[1][0] * w.x +
+            covariance[1][1] * w.y +
+            covariance[1][2] * w.z
+            )
+        +
+        v.z * (
+            covariance[2][0] * w.x +
+            covariance[2][1] * w.y +
+            covariance[2][2] * w.z
+            );
+}
+
+
+// Calculate ellipse axes from 2D covariance
+ProjectedEllipse
+GaussianSplattingSubSceneOverride::calculateEllipseAxes(
+    const MMatrix& covariance2D,
+    const MVector& cameraRight,
+    const MVector& cameraUp,
+    double sigmaMultiplier) const
+{
+    const double c00 =
+        covariance2D[0][0];
+
+    const double c01 =
+        covariance2D[0][1];
+
+    const double c11 =
+        covariance2D[1][1];
+
+
+    // Eigenvalues of:
+    //     [ c00 c01 ]
+    //     [ c01 c11 ]
+    const double trace =
+        c00 + c11;
+
+    const double diff =
+        c00 - c11;
+
+    const double discriminant =
+        std::sqrt(
+            std::max(
+                0.0,
+                diff * diff +
+                4.0 * c01 * c01
+            )
+        );
+
+
+    const double lambdaMajor =
+        0.5 * (trace + discriminant);
+
+    const double lambdaMinor =
+        0.5 * (trace - discriminant);
+
+
+    // Eigenvalue = variance
+    // sqrt(variance) = sigma
+    const double sigmaMajor =
+        std::sqrt(
+            std::max(
+                0.0,
+                lambdaMajor
+            )
+        );
+
+    const double sigmaMinor =
+        std::sqrt(
+            std::max(
+                0.0,
+                lambdaMinor
+            )
+        );
+
+
+    // Eigenvector angle
+    const double angle =
+        0.5 * std::atan2(
+            2.0 * c01,
+            c00 - c11
+        );
+
+
+    const double c =
+        std::cos(angle);
+
+    const double s =
+        std::sin(angle);
+
+
+    // Rotate camera basis into ellipse basis
+    MVector axisX =
+        cameraRight * c +
+        cameraUp * s;
+
+    MVector axisY =
+        cameraRight * -s +
+        cameraUp * c;
+
+
+    axisX.normalize();
+    axisY.normalize();
+
+
+    // ------------------------------------------------------------------------
+    // Scale to desired Gaussian radius.
+    //
+    // 3 sigma is a reasonable visualization extent.
+    // ------------------------------------------------------------------------
+
+    axisX *=
+        sigmaMajor * sigmaMultiplier;
+
+    axisY *=
+        sigmaMinor * sigmaMultiplier;
+
+
+    return {
+        axisX,
+        axisY
+    };
+}
+
+
+// Append the two triangles forming one splat quad
+void GaussianSplattingSubSceneOverride::appendSplatQuad(
+    const GS::GaussianSplat& splat,
+    const MVector& axisX,
+    const MVector& axisY,
+    std::vector<GS::SplatVertex>& vertices)
+{
+    const float alpha =
+        std::clamp(
+            splat.opacity,
+            0.0f,
+            1.0f
+        );
+
+    // Vertex helper
+    auto makeVertex =
+        [&](const MPoint& position,
+            float u,
+            float v)
+        {
+            GS::SplatVertex vertex{};
+
+            vertex.position[0] =
+                static_cast<float>(position.x);
+
+            vertex.position[1] =
+                static_cast<float>(position.y);
+
+            vertex.position[2] =
+                static_cast<float>(position.z);
+
+            vertex.color[0] =
+                splat.color.r;
+
+            vertex.color[1] =
+                splat.color.g;
+
+            vertex.color[2] =
+                splat.color.b;
+
+            vertex.color[3] =
+                alpha;
+
+            vertex.uv[0] = u;
+            vertex.uv[1] = v;
+
+            return vertex;
+        };
+
+
+    // Four corners
+    const MPoint center =
+        splat.center;
+
+
+    const MPoint bottomLeft =
+        center -
+        axisX -
+        axisY;
+
+    const MPoint bottomRight =
+        center +
+        axisX -
+        axisY;
+
+    const MPoint topRight =
+        center +
+        axisX +
+        axisY;
+
+    const MPoint topLeft =
+        center -
+        axisX +
+        axisY;
+
+
+    // Triangle 1
+    vertices.push_back(
+        makeVertex(
+            bottomLeft,
+            -1.0f,
+            -1.0f
+        )
+    );
+
+    vertices.push_back(
+        makeVertex(
+            bottomRight,
+            1.0f,
+            -1.0f
+        )
+    );
+
+    vertices.push_back(
+        makeVertex(
+            topRight,
+            1.0f,
+            1.0f
+        )
+    );
+
+    // Triangle 2
+    vertices.push_back(
+        makeVertex(
+            bottomLeft,
+            -1.0f,
+            -1.0f
+        )
+    );
+
+    vertices.push_back(
+        makeVertex(
+            topRight,
+            1.0f,
+            1.0f
+        )
+    );
+
+    vertices.push_back(
+        makeVertex(
+            topLeft,
+            -1.0f,
+            1.0f
+        )
+    );
+
+    // Bounding box
+    m_boundingBox.expand(bottomLeft);
+    m_boundingBox.expand(bottomRight);
+    m_boundingBox.expand(topRight);
+    m_boundingBox.expand(topLeft);
 }

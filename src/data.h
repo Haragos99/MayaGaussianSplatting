@@ -55,3 +55,9 @@ namespace GS
         float uv[2];
     };
 }
+
+struct ProjectedEllipse
+{
+    MVector axisX;
+    MVector axisY;
+};
