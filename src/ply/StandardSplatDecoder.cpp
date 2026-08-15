@@ -103,6 +103,7 @@ namespace GS::Ply
             splat.scale[2] = std::max(0.0001f, std::min(scaleZ, 10.0f));
             splat.scaleX = splat.scale[0];
             splat.scaleY = splat.scale[1];
+			splat.scaleZ = splat.scale[2];
             splat.opacity = opacity;
             splat.color = MColor(red, green, blue, opacity);
 
