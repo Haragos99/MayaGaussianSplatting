@@ -1,5 +1,6 @@
 #include "gaussiansplattingdraweriverrider.h"
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MFnNumericAttribute.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -9,6 +10,7 @@
 
 MTypeId GaussianSplattingLocator::id(0x7802aaaa);
 MObject GaussianSplattingLocator::locatorMsgAttr;
+MObject GaussianSplattingLocator::aSplatSize;
 
 MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
 {
@@ -21,10 +23,16 @@ MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug&
 
 MStatus GaussianSplattingLocator::initialize()
 {
-    MFnTypedAttribute typedAttr;
-    locatorMsgAttr = typedAttr.create("locatorMsg", "locatorMsg", MFnData::kString);
-	addAttribute(locatorMsgAttr);
+    MFnNumericAttribute  typedAttr;
 
+	aSplatSize = typedAttr.create("splatSize", "splatSize", MFnNumericData::kFloat);
+    typedAttr.setMin(0.1f);     // slider min
+    typedAttr.setMax(1.0f);    // slider max
+    typedAttr.setKeyable(true);
+    typedAttr.setStorable(true);
+    typedAttr.setReadable(true);
+    typedAttr.setWritable(true);
+    addAttribute(aSplatSize);
     return MS::kSuccess;
 }
 
@@ -45,9 +53,17 @@ GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObje
     {
         dagNode.getPath(m_dagPath);
     }
-
+	m_splatSize = 1.0f;
     loadSplatsFromNodeOrDemoData();
 }
+
+float GaussianSplattingSubSceneOverride::getSpaltSize() const
+{
+    MPlug plug(m_nodeObj, GaussianSplattingLocator::aSplatSize);
+
+    return plug.asFloat();
+}
+
 
 GaussianSplattingSubSceneOverride::~GaussianSplattingSubSceneOverride()
 {
@@ -73,6 +89,7 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
     MVector cameraUp;
     MVector cameraForward;
 
+
     const bool haveCamera = readCamera(
         cameraPosition,
         cameraRight,
@@ -86,11 +103,13 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
 
     return
         container.count() == 0 ||
+        m_splatSize != getSpaltSize()||
         m_dirty ||
         m_vertexBufferDirty ||
         m_indexBufferDirty ||
         m_shaderDirty ||
         cameraNeedsResort ||
+        sliderDirty ||
         !m_positionBuffer ||
         !m_colorBuffer ||
         !m_uvBuffer ||
@@ -106,6 +125,18 @@ void GaussianSplattingSubSceneOverride::update(
     double dt = std::chrono::duration<double>(now - m_lastFrame).count();
 
     m_fps = 1.0 / dt;
+
+    sliderDirty = m_splatSize != getSpaltSize();
+
+
+    m_splatSize = getSpaltSize();
+	m_splatSize = std::max(0.1f, std::min(m_splatSize, 1.0f));
+
+
+    MGlobal::displayInfo(
+        "Current splat size: " + MString() + m_splatSize
+    );
+
 
     createOrUpdateRenderItem(container);
 
@@ -145,16 +176,17 @@ void GaussianSplattingSubSceneOverride::update(
     // Build static vertex buffers only when splat data changed.
     if (
         m_vertexBufferDirty ||
+        sliderDirty ||
         !m_positionBuffer ||
         !m_colorBuffer ||
         !m_uvBuffer)
     {
+       
         buildStaticVertexBuffersOnce();
-
         // If vertices changed, the index buffer must also be rebuilt.
         m_indexBufferDirty = true;
     }
-
+    
     // Rebuild only the sorted index buffer when the camera changed enough.
     if (
         m_indexBufferDirty ||
@@ -516,6 +548,7 @@ void GaussianSplattingSubSceneOverride::loadSplatsFromNodeOrDemoData()
                 splat.color = MColor(fx, fy, 1.0f - fx, 0.45f);
                 splat.scaleX = 0.08f;
                 splat.scaleY = 0.08f;
+				splat.scaleZ = 0.08f;
                 splat.opacity = 0.45f;
 
                 m_splats.push_back(splat);
@@ -1117,13 +1150,13 @@ MMatrix GaussianSplattingSubSceneOverride::buildCovariance(
     scaleSquared.setToIdentity();
 
     const double sx =
-        static_cast<double>(splat.scaleX);
+        static_cast<double>(splat.scaleX) * m_splatSize;
 
     const double sy =
-        static_cast<double>(splat.scaleY);
+        static_cast<double>(splat.scaleY) * m_splatSize;
 
     const double sz =
-        static_cast<double>(splat.scaleZ);
+        static_cast<double>(splat.scaleZ) * m_splatSize;
 
     scaleSquared[0][0] = sx * sx;
     scaleSquared[1][1] = sy * sy;

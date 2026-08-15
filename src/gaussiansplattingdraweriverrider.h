@@ -38,7 +38,7 @@ public:
     static void* creator() { return new GaussianSplattingLocator(); }
     static MStatus initialize();
     MStatus connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc) override;
-    
+    static MObject aSplatSize;
     bool isBounded() const override { return true; }
 
 
@@ -59,6 +59,9 @@ public:
     MPxNode* m_node = nullptr;
 
     ~GaussianSplattingSubSceneOverride() override;
+
+    float getSpaltSize() const;
+    
 
     MHWRender::DrawAPI supportedDrawAPIs() const override;
 
@@ -195,12 +198,13 @@ private:
     bool m_vertexBufferDirty = true;   // Rebuild only when PLY/data changes.
     bool m_indexBufferDirty = true;    // Rebuild when camera sorting changes.
 
+	bool sliderDirty = true;
     std::chrono::high_resolution_clock::time_point m_lastFrame;
     double m_fps = 0.0;
 
     std::vector<GS::GaussianSplat> m_splats;
 
-
+	float m_splatSize;
     MHWRender::MShaderInstance* m_splatShader = nullptr;
 
     MBoundingBox m_boundingBox;
