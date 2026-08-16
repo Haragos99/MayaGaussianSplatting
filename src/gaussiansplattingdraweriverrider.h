@@ -3,7 +3,6 @@
 #include <maya/MPxGeometryOverride.h>
 #include <maya/MUserData.h>
 #include <maya/MGlobal.h>
-#include <maya/MPxLocatorNode.h>
 #include <maya/MDrawRegistry.h>
 #include <maya/MHWGeometry.h>
 #include <random>
@@ -18,6 +17,7 @@
 #include <maya/MDagPath.h>
 #include "data.h"
 #include <chrono>
+#include "gaussiansplattingnode.h"
 
 using namespace MHWRender;
 
@@ -27,23 +27,6 @@ struct TestPoint
     float pos[3];
     float color[4]; // rgba
 };
-
-// MyLocator node is drawn using MyLocatorDrawOverride
-class GaussianSplattingLocator : public MPxLocatorNode
-{
-public:
-	GaussianSplattingLocator() = default;
-    static MTypeId id;
-    static MObject locatorMsgAttr;
-    static void* creator() { return new GaussianSplattingLocator(); }
-    static MStatus initialize();
-    MStatus connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc) override;
-    static MObject aSplatSize;
-    bool isBounded() const override { return true; }
-
-
-};
-
 
 class GaussianSplattingSubSceneOverride final : public MHWRender::MPxSubSceneOverride
 {

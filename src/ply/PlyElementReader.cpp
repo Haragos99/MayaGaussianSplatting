@@ -12,14 +12,19 @@ namespace GS::Ply
             switch (type)
             {
             case ScalarType::Int8:
-            case ScalarType::UInt8: return 1;
+            case ScalarType::UInt8: 
+                return 1;
             case ScalarType::Int16:
-            case ScalarType::UInt16: return 2;
+            case ScalarType::UInt16: 
+                return 2;
             case ScalarType::Int32:
             case ScalarType::UInt32:
-            case ScalarType::Float32: return 4;
-            case ScalarType::Float64: return 8;
-            default: return 0;
+            case ScalarType::Float32:
+                return 4;
+            case ScalarType::Float64: 
+                return 8;
+            default: 
+                return 0;
             }
         }
 
@@ -35,14 +40,22 @@ namespace GS::Ply
         {
             switch (type)
             {
-            case ScalarType::Int8: return static_cast<double>(readBinaryValue<std::int8_t>(input));
-            case ScalarType::UInt8: return static_cast<double>(readBinaryValue<std::uint8_t>(input));
-            case ScalarType::Int16: return static_cast<double>(readBinaryValue<std::int16_t>(input));
-            case ScalarType::UInt16: return static_cast<double>(readBinaryValue<std::uint16_t>(input));
-            case ScalarType::Int32: return static_cast<double>(readBinaryValue<std::int32_t>(input));
-            case ScalarType::UInt32: return static_cast<double>(readBinaryValue<std::uint32_t>(input));
-            case ScalarType::Float32: return static_cast<double>(readBinaryValue<float>(input));
-            case ScalarType::Float64: return readBinaryValue<double>(input);
+            case ScalarType::Int8: 
+                return static_cast<double>(readBinaryValue<std::int8_t>(input));
+            case ScalarType::UInt8: 
+                return static_cast<double>(readBinaryValue<std::uint8_t>(input));
+            case ScalarType::Int16: 
+                return static_cast<double>(readBinaryValue<std::int16_t>(input));
+            case ScalarType::UInt16:
+                return static_cast<double>(readBinaryValue<std::uint16_t>(input));
+            case ScalarType::Int32:
+                return static_cast<double>(readBinaryValue<std::int32_t>(input));
+            case ScalarType::UInt32:
+                return static_cast<double>(readBinaryValue<std::uint32_t>(input));
+            case ScalarType::Float32:
+                return static_cast<double>(readBinaryValue<float>(input));
+            case ScalarType::Float64: 
+                return readBinaryValue<double>(input);
             default: return 0.0;
             }
         }
@@ -62,7 +75,11 @@ namespace GS::Ply
         {
             if (!std::getline(input, line))
             {
-                if (outError) *outError = "Unexpected end of ASCII PLY element data.";
+                if (outError)
+                {
+                    *outError = "Unexpected end of ASCII PLY element data.";
+                }
+
                 return false;
             }
 
@@ -74,7 +91,11 @@ namespace GS::Ply
                 lineStream >> record[propertyIndex];
                 if (!lineStream)
                 {
-                    if (outError) *outError = "Failed to read ASCII PLY element property.";
+                    if (outError)
+                    {
+                        *outError = "Failed to read ASCII PLY element property.";
+                    }
+
                     return false;
                 }
             }
@@ -100,14 +121,22 @@ namespace GS::Ply
                 const Property& property = element.properties[propertyIndex];
                 if (scalarTypeSize(property.type) == 0)
                 {
-                    if (outError) *outError = "Invalid binary PLY scalar property.";
+                    if (outError)
+                    {
+                        *outError = "Invalid binary PLY scalar property.";
+                    }
+
                     return false;
                 }
 
                 record[propertyIndex] = readBinaryScalar(input, property.type);
                 if (!input)
                 {
-                    if (outError) *outError = "Unexpected end of binary PLY element data.";
+                    if (outError)
+                    {
+                        *outError = "Unexpected end of binary PLY element data.";
+                    }
+
                     return false;
                 }
             }

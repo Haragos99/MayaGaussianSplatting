@@ -160,7 +160,11 @@ namespace GS::Ply
 
         if (chunkElement == nullptr || vertexElement == nullptr)
         {
-            if (outError) *outError = "Compressed PLY is missing chunk or vertex element.";
+            if (outError) 
+            { 
+                *outError = "Compressed PLY is missing chunk or vertex element."; 
+            }
+
             return false;
         }
 
@@ -171,11 +175,23 @@ namespace GS::Ply
         {
             Records ignoredRecords;
             Records* targetRecords = &ignoredRecords;
-            if (element.name == "chunk") targetRecords = &chunkRecords;
-            else if (element.name == "vertex") targetRecords = &vertexRecords;
+            if (element.name == "chunk")
+            {
+                targetRecords = &chunkRecords;
+            }
+            else if (element.name == "vertex")
+            {
+                targetRecords = &vertexRecords;
+            }
 
-            if (!readBinaryElement(input, element, *targetRecords, outError)) return false;
-            if (element.name == "vertex") break;
+            if (!readBinaryElement(input, element, *targetRecords, outError))
+            {
+                return false;
+            }
+            if (element.name == "vertex")
+            {
+                break;
+            }
         }
 
         const std::vector<Property>& chunkProperties = chunkElement->properties;
@@ -193,7 +209,11 @@ namespace GS::Ply
             const std::size_t chunkIndex = vertexIndex / kChunkSize;
             if (chunkIndex >= chunkRecords.size())
             {
-                if (outError) *outError = "Compressed PLY vertex references a missing chunk.";
+                if (outError)
+                {
+                    *outError = "Compressed PLY vertex references a missing chunk.";
+                }
+
                 return false;
             }
 
@@ -209,7 +229,8 @@ namespace GS::Ply
             splat.center = MPoint(
                 lerp(getRangeValue(chunkRecord, chunkProperties, "x", false, 0.0f), getRangeValue(chunkRecord, chunkProperties, "x", true, 0.0f), normalizedX),
                 lerp(getRangeValue(chunkRecord, chunkProperties, "y", false, 0.0f), getRangeValue(chunkRecord, chunkProperties, "y", true, 0.0f), normalizedY),
-                lerp(getRangeValue(chunkRecord, chunkProperties, "z", false, 0.0f), getRangeValue(chunkRecord, chunkProperties, "z", true, 0.0f), normalizedZ));
+                lerp(getRangeValue(chunkRecord, chunkProperties, "z", false, 0.0f), getRangeValue(chunkRecord, chunkProperties, "z", true, 0.0f), normalizedZ)
+            );
 
             float scaleX = 0.03f;
             float scaleY = 0.03f;
@@ -237,7 +258,8 @@ namespace GS::Ply
             {
                 unpackRotation(
                     getPackedValue(vertexRecord, packedRotationIndex),
-                    splat.rotation[0], splat.rotation[1], splat.rotation[2], splat.rotation[3]);
+                    splat.rotation[0], splat.rotation[1], splat.rotation[2], splat.rotation[3]
+                );
             }
 
             outSplats.push_back(splat);

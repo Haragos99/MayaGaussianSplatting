@@ -24,7 +24,11 @@ namespace GS::Ply
 
         double getProperty(const Record& record, int propertyIndex, double fallback = 0.0)
         {
-            if (propertyIndex < 0) return fallback;
+            if (propertyIndex < 0) 
+            { 
+                return fallback; 
+            }
+
             const std::size_t index = static_cast<std::size_t>(propertyIndex);
             return index < record.size() ? record[index] : fallback;
         }
@@ -55,7 +59,8 @@ namespace GS::Ply
             splat.center = MPoint(
                 getProperty(record, positionXIndex),
                 getProperty(record, positionYIndex),
-                getProperty(record, positionZIndex));
+                getProperty(record, positionZIndex)
+            );
 
             float red = 1.0f;
             float green = 1.0f;
@@ -157,7 +162,11 @@ namespace GS::Ply
         const Element* vertexElement = findElement(header, "vertex");
         if (vertexElement == nullptr || vertexElement->count == 0)
         {
-            if (outError) *outError = "PLY file has no vertices.";
+            if (outError) 
+            {
+                *outError = "PLY file has no vertices."; 
+            }
+
             return false;
         }
 
@@ -166,11 +175,18 @@ namespace GS::Ply
             ? readAsciiElement(input, *vertexElement, records, outError)
             : readBinaryElement(input, *vertexElement, records, outError);
 
-        if (!readSuccess) return false;
+        if (!readSuccess)
+        {
+            return false;
+        }
 
         outSplats.clear();
         outSplats.reserve(records.size());
-        for (const Record& record : records) outSplats.push_back(makeSplat(record, *vertexElement));
+        for (const Record& record : records)
+        {
+            outSplats.push_back(makeSplat(record, *vertexElement));
+        }
+
         return true;
     }
 }

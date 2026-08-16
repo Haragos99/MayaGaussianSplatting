@@ -1,5 +1,4 @@
 #include "PlyHeaderParser.h"
-
 #include <sstream>
 
 namespace GS::Ply
@@ -8,14 +7,23 @@ namespace GS::Ply
     {
         ScalarType parseScalarType(const std::string& typeName)
         {
-            if (typeName == "char" || typeName == "int8") return ScalarType::Int8;
-            if (typeName == "uchar" || typeName == "uint8") return ScalarType::UInt8;
-            if (typeName == "short" || typeName == "int16") return ScalarType::Int16;
-            if (typeName == "ushort" || typeName == "uint16") return ScalarType::UInt16;
-            if (typeName == "int" || typeName == "int32") return ScalarType::Int32;
-            if (typeName == "uint" || typeName == "uint32") return ScalarType::UInt32;
-            if (typeName == "float" || typeName == "float32") return ScalarType::Float32;
-            if (typeName == "double" || typeName == "float64") return ScalarType::Float64;
+            if (typeName == "char" || typeName == "int8")
+                return ScalarType::Int8;
+            if (typeName == "uchar" || typeName == "uint8") 
+                return ScalarType::UInt8;
+            if (typeName == "short" || typeName == "int16") 
+                return ScalarType::Int16;
+            if (typeName == "ushort" || typeName == "uint16") 
+                return ScalarType::UInt16;
+            if (typeName == "int" || typeName == "int32") 
+                return ScalarType::Int32;
+            if (typeName == "uint" || typeName == "uint32") 
+                return ScalarType::UInt32;
+            if (typeName == "float" || typeName == "float32") 
+                return ScalarType::Float32;
+            if (typeName == "double" || typeName == "float64") 
+                return ScalarType::Float64;
+
             return ScalarType::Invalid;
         }
     }
@@ -29,7 +37,8 @@ namespace GS::Ply
 
         if (!std::getline(input, line) || line != "ply")
         {
-            if (outError) *outError = "File is not a valid PLY file. Missing 'ply' header.";
+            if (outError) 
+                *outError = "File is not a valid PLY file. Missing 'ply' header.";
             return false;
         }
 
@@ -37,9 +46,18 @@ namespace GS::Ply
 
         while (std::getline(input, line))
         {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line == "end_header") return true;
-            if (line.empty() || line.rfind("comment", 0) == 0) continue;
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            if (line == "end_header")
+            {
+                return true;
+            }
+            if (line.empty() || line.rfind("comment", 0) == 0)
+            {
+                continue;
+            }
 
             std::istringstream lineStream(line);
             std::string token;
@@ -50,11 +68,21 @@ namespace GS::Ply
                 std::string formatName;
                 lineStream >> formatName;
 
-                if (formatName == "ascii") header.format = Format::Ascii;
-                else if (formatName == "binary_little_endian") header.format = Format::BinaryLittleEndian;
+                if (formatName == "ascii")
+                {
+                    header.format = Format::Ascii;
+                }
+                else if (formatName == "binary_little_endian")
+                {
+                    header.format = Format::BinaryLittleEndian;
+                }
                 else
                 {
-                    if (outError) *outError = "Unsupported PLY format: " + formatName;
+                    if (outError)
+                    {
+                        *outError = "Unsupported PLY format: " + formatName;
+                    }
+
                     return false;
                 }
             }
@@ -71,7 +99,10 @@ namespace GS::Ply
                 std::string propertyName;
                 lineStream >> typeName;
 
-                if (typeName == "list") continue;
+                if (typeName == "list")
+                {
+                    continue;
+                }
                 lineStream >> propertyName;
 
                 Property property;
@@ -80,7 +111,11 @@ namespace GS::Ply
 
                 if (property.type == ScalarType::Invalid)
                 {
-                    if (outError) *outError = "Unsupported PLY property type: " + typeName;
+                    if (outError)
+                    {
+                        *outError = "Unsupported PLY property type: " + typeName;
+                    }
+
                     return false;
                 }
 
@@ -88,7 +123,11 @@ namespace GS::Ply
             }
         }
 
-        if (outError) *outError = "PLY header ended unexpectedly.";
+        if (outError)
+        {
+            *outError = "PLY header ended unexpectedly.";
+        }
+
         return false;
     }
 
@@ -96,7 +135,10 @@ namespace GS::Ply
     {
         for (const Element& element : header.elements)
         {
-            if (element.name == elementName) return &element;
+            if (element.name == elementName)
+            {
+                return &element;
+            }
         }
         return nullptr;
     }

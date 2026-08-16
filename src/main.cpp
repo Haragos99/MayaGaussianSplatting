@@ -23,13 +23,6 @@ MStatus initializePlugin(MObject obj)
 
     status.perror("REWGregisterNode"); // This will print an error if registration fails
 
-    status = plugin.registerNode(
-        "gaussiansplattingNode",               //  the type name Maya knows
-        GaussiansplattingNode::id,             // the unique typeId (MTypeId)
-        GaussiansplattingNode::creator,
-        GaussiansplattingNode::initialize
-    );
-
     status = MHWRender::MDrawRegistry::registerSubSceneOverrideCreator(
         "drawdb/subscene/GaussianSplattingLocator",
         "GaussianSplattingSubSceneOverride",
@@ -42,7 +35,6 @@ MStatus initializePlugin(MObject obj)
 MStatus uninitializePlugin(MObject obj)
 {
 	MFnPlugin plugin(obj);
-    plugin.deregisterNode(GaussiansplattingNode::id);
     plugin.deregisterNode(GaussianSplattingLocator::id);
 
     MHWRender::MDrawRegistry::deregisterSubSceneOverrideCreator(

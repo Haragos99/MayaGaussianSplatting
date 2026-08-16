@@ -1,18 +1,20 @@
 #pragma once
-#include <maya/MPxNode.h>
+#include <maya/MPxLocatorNode.h>
 #include "data.h"
+#include <maya/MGlobal.h>
 
-class GaussiansplattingNode : public MPxNode
+// MyLocator node is drawn using MyLocatorDrawOverride
+class GaussianSplattingLocator : public MPxLocatorNode
 {
-	public:
-		GaussiansplattingNode() = default;
-		void loadPointCloud(const std::string& filePath);
-		static void* creator();
-		static MStatus initialize();
-		static MTypeId id;
-		~GaussiansplattingNode() = default;
-	private:
-		std::vector<Splat> splats;
+public:
+    GaussianSplattingLocator() = default;
+    static MTypeId id;
+    static MObject locatorMsgAttr;
+    static void* creator() { return new GaussianSplattingLocator(); }
+    static MStatus initialize();
+    MStatus connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc) override;
+    static MObject aSplatSize;
+    bool isBounded() const override { return true; }
+
 
 };
-

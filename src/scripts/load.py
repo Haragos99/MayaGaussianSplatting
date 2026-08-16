@@ -20,9 +20,5 @@ else:
 locator = cmds.createNode("GaussianSplattingLocator")
 print("Created locator:", locator)
 
-# Create gaussiansplattingNode
-
-node = cmds.createNode("gaussiansplattingNode")
-print("Created DG node:", node)
 
 print("Done.")

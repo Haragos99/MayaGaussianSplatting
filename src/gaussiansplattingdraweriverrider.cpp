@@ -8,39 +8,7 @@
 #include "gaussianSplatPlyLoader.h"
 #include <maya/MQuaternion.h>
 
-MTypeId GaussianSplattingLocator::id(0x7802aaaa);
-MObject GaussianSplattingLocator::locatorMsgAttr;
-MObject GaussianSplattingLocator::aSplatSize;
-
-MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
-{
-    // Check if the connection is made to the locatorMsgAttr
-    if (plug == locatorMsgAttr || otherPlug == locatorMsgAttr) {
-        MGlobal::displayInfo("Connection made to locatorMsgAttr.");
-    }
-	return MPxLocatorNode::connectionMade(plug, otherPlug, asSrc);
-}
-
-MStatus GaussianSplattingLocator::initialize()
-{
-    MFnNumericAttribute  typedAttr;
-
-	aSplatSize = typedAttr.create("splatSize", "splatSize", MFnNumericData::kFloat);
-    typedAttr.setMin(0.1f);     // slider min
-    typedAttr.setMax(1.0f);    // slider max
-    typedAttr.setKeyable(true);
-    typedAttr.setStorable(true);
-    typedAttr.setReadable(true);
-    typedAttr.setWritable(true);
-    addAttribute(aSplatSize);
-    return MS::kSuccess;
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////
 const MString GaussianSplattingSubSceneOverride::kRenderItemName("gaussianSplatRenderItem");
-
-
 
 GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObject& obj)
     : MPxSubSceneOverride(obj)
@@ -63,7 +31,6 @@ float GaussianSplattingSubSceneOverride::getSpaltSize() const
 
     return plug.asFloat();
 }
-
 
 GaussianSplattingSubSceneOverride::~GaussianSplattingSubSceneOverride()
 {
@@ -136,7 +103,6 @@ void GaussianSplattingSubSceneOverride::update(
     MGlobal::displayInfo(
         "Current splat size: " + MString() + m_splatSize
     );
-
 
     createOrUpdateRenderItem(container);
 
@@ -270,7 +236,6 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
         MPoint(0.0, 2.5, 0.0),
         fpsLabel,
         MHWRender::MUIDrawManager::kLeft);
-
 
     drawManager.setColor(MColor(0.2f, 0.8f, 1.0f, 1.0f));
     drawManager.box(
@@ -507,7 +472,6 @@ void GaussianSplattingSubSceneOverride::releaseShader()
 
     m_shader = nullptr;
 }
-
 
 void GaussianSplattingSubSceneOverride::loadSplatsFromNodeOrDemoData()
 {
