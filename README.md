@@ -14,7 +14,10 @@ A C++ plugin for **Autodesk Maya** that enables **3D Gaussian Splatting (3DGS)**
 
 ## Demo
 
-![Gaussian Splatting Demo](resources/GF.gif)
+<img src="resources/GF.gif" alt="Gaussian Splatting Demo" width="900">
+
+<img src="resources/GF_2.gif" alt="Gaussian Splatting Demo" width="900">
+
 
 ## How It Works
 
