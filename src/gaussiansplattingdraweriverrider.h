@@ -95,13 +95,6 @@ private:
         const MPoint& cameraWorldPosition,
         const MVector& cameraWorldForward) const;
 
-    void buildVertexBuffer(
-        const std::vector<GS::SplatVertex>& vertices);
-
-    void buildIndexBuffer(
-        const std::vector<unsigned int>& indices);
-
-
     void buildStaticVertexBuffersOnce();
 
     void rebuildSortedIndexBufferOnly(
