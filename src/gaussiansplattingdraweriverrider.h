@@ -22,12 +22,6 @@
 using namespace MHWRender;
 
 
-struct TestPoint
-{
-    float pos[3];
-    float color[4]; // rgba
-};
-
 class GaussianSplattingSubSceneOverride final : public MHWRender::MPxSubSceneOverride
 {
 public:

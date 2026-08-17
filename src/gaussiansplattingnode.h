@@ -21,7 +21,7 @@ public:
     bool isBounded() const override { return true; }
     std::pair<std::vector<GS::GaussianSplat>, MBoundingBox>  loadSplatsFromFile();
 private:
-    std::string filepath
+    std::string filepath;
 
 
 
