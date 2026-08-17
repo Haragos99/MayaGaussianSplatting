@@ -22,7 +22,21 @@ GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObje
         dagNode.getPath(m_dagPath);
     }
 	m_splatSize = 1.0f;
-    loadSplatsFromNodeOrDemoData();
+    MFnDependencyNode fnNode(obj);
+    auto* node = dynamic_cast<GaussianSplattingLocator*>(fnNode.userNode());
+    if (!node)
+    {
+		MGlobal::displayError("Failed to get GaussianSplattingLocator node from MObject.");
+    }
+	auto splats = node->loadSplatsFromFile();
+
+	m_splats = splats.first;
+	m_boundingBox = splats.second;
+
+    m_dirty = true;
+    m_geometryDirty = true;
+    m_shaderDirty = true;
+    m_uiDirty = true;
 }
 
 float GaussianSplattingSubSceneOverride::getSpaltSize() const
@@ -471,67 +485,6 @@ void GaussianSplattingSubSceneOverride::releaseShader()
     }
 
     m_shader = nullptr;
-}
-
-void GaussianSplattingSubSceneOverride::loadSplatsFromNodeOrDemoData()
-{
-    // Replace this with reading data from your GaussianSplatShape node:
-    //
-    //   - file path attr
-    //   - loaded PLY/splat data
-    //   - positions
-    //   - SH/color
-    //   - opacity
-    //   - scale
-    //   - rotation/covariance
-    //
-    // This demo creates a small cloud.
-
-    m_splats.clear();
-
-    const int countX = 20;
-    const int countY = 20;
-    const std::string filePath = "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\models\\Tree.ply";
-    std::string error;
-
-    if (!GaussianSplatPlyLoader::load(filePath, m_splats, &error))
-    { 
-        for (int y = 0; y < countY; ++y)
-        {
-            for (int x = 0; x < countX; ++x)
-            {
-                const float fx = static_cast<float>(x) / static_cast<float>(countX - 1);
-                const float fy = static_cast<float>(y) / static_cast<float>(countY - 1);
-
-                GS::GaussianSplat splat;
-                splat.center = MPoint(
-                    (fx - 0.5f) * 6.0f,
-                    (fy - 0.5f) * 4.0f,
-                    std::sin(fx * 6.2831853f) * 0.5f);
-
-                splat.color = MColor(fx, fy, 1.0f - fx, 0.45f);
-                splat.scaleX = 0.08f;
-                splat.scaleY = 0.08f;
-				splat.scaleZ = 0.08f;
-                splat.opacity = 0.45f;
-
-                m_splats.push_back(splat);
-            }
-        }
-    }
-    m_boundingBox.clear();
-
-    for (const GS::GaussianSplat& splat : m_splats)
-    {
-        const double r = std::max(splat.scaleX, splat.scaleY) * 2.0;
-        m_boundingBox.expand(splat.center + MVector(r, r, r));
-        m_boundingBox.expand(splat.center + MVector(-r, -r, -r));
-    }
-
-    m_dirty = true;
-    m_geometryDirty = true;
-    m_shaderDirty = true;
-    m_uiDirty = true;
 }
 
 bool GaussianSplattingSubSceneOverride::readCamera(

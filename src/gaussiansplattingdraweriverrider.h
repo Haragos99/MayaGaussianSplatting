@@ -91,9 +91,6 @@ private:
     void createShader();
 
     void releaseShader();
-
-    void loadSplatsFromNodeOrDemoData();
-
     bool readCamera(
         MPoint& cameraWorldPosition,
         MVector& cameraWorldRight,
