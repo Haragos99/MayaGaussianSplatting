@@ -88,6 +88,11 @@ private:
 
     void releaseShader();
 
+    // Drops every cached GPU/CPU result so the next update rebuilds from scratch.
+    void discardCachedGeometry();
+
+    const std::vector<GS::GaussianSplat>& splats() const;
+
     void buildStaticVertexBuffersOnce(
         const GS::CameraState& camera);
 
@@ -147,7 +152,8 @@ private:
     std::chrono::high_resolution_clock::time_point m_lastFrame;
     double m_fps = 0.0;
 
-    std::vector<GS::GaussianSplat> m_splats;
+    GaussianSplattingLocator* m_locator = nullptr;
+    unsigned int m_dataVersion = 0;
 
 	float m_splatSize;
     MHWRender::MShaderInstance* m_splatShader = nullptr;

@@ -1,7 +1,7 @@
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MViewport2Renderer.h>
 #include "gaussiansplattingnode.h"
-#include "gaussianSplatPlyLoader.h"
 
 MTypeId GaussianSplattingLocator::id(0x7802aaaa);
 MObject GaussianSplattingLocator::locatorMsgAttr;
@@ -45,6 +45,7 @@ MStatus GaussianSplattingLocator::initialize()
     tAttr.setWritable(true);
     tAttr.setReadable(true);
     tAttr.setKeyable(true);
+    tAttr.setUsedAsFilename(true);
 
     addAttribute(aFileName);
 
@@ -68,50 +69,18 @@ MStatus GaussianSplattingLocator::initialize()
 }
 
 
-std::pair<std::vector<GS::GaussianSplat>,MBoundingBox> GaussianSplattingLocator::loadSplatsFromFile()
+unsigned int GaussianSplattingLocator::syncSplatData()
 {
-    MBoundingBox m_boundingBox;
-    std::vector<GS::GaussianSplat> m_splats;
-
-    const int countX = 20;
-    const int countY = 20;
-    const std::string filePath = "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\models\\Tree.ply";
-    std::string error;
-
-    if (!GaussianSplatPlyLoader::load(filePath, m_splats, &error))
+    if (m_fileDirty)
     {
-        for (int y = 0; y < countY; ++y)
-        {
-            for (int x = 0; x < countX; ++x)
-            {
-                const float fx = static_cast<float>(x) / static_cast<float>(countX - 1);
-                const float fy = static_cast<float>(y) / static_cast<float>(countY - 1);
+        m_fileDirty = false;
 
-                GS::GaussianSplat splat;
-                splat.center = MPoint(
-                    (fx - 0.5f) * 6.0f,
-                    (fy - 0.5f) * 4.0f,
-                    std::sin(fx * 6.2831853f) * 0.5f);
+        const MPlug filePlug(thisMObject(), aFileName);
 
-                splat.color = MColor(fx, fy, 1.0f - fx, 0.45f);
-                splat.scaleX = 0.08f;
-                splat.scaleY = 0.08f;
-                splat.scaleZ = 0.08f;
-                splat.opacity = 0.45f;
-
-                m_splats.push_back(splat);
-            }
-        }
-    };
-
-    for (const GS::GaussianSplat& splat : m_splats)
-    {
-        const double r = std::max(splat.scaleX, splat.scaleY) * 2.0;
-        m_boundingBox.expand(splat.center + MVector(r, r, r));
-        m_boundingBox.expand(splat.center + MVector(-r, -r, -r));
+        m_data.loadFromFile(filePlug.asString());
     }
 
-	return  std::make_pair( m_splats, m_boundingBox);
+    return m_data.version();
 }
 
 
@@ -123,12 +92,6 @@ MStatus GaussianSplattingLocator::compute(
     {
         MString fileName =
             dataBlock.inputValue(aFileName).asString();
-
-        MGlobal::displayInfo(
-            "Filename: " + fileName
-        );
-
-        // Do something with the file...
 
         MDataHandle outputHandle =
             dataBlock.outputValue(outputAttr);
@@ -148,13 +111,11 @@ MStatus GaussianSplattingLocator::setDependentsDirty(
 {
     if (plug == aFileName)
     {
-        MString fileName =
-            plug.asString();
+        m_fileDirty = true;
 
-        MGlobal::displayInfo(
-            "Filename changed: " + fileName
-        );
+        // Forces the sub-scene override to run update() and rebuild its buffers.
+        MHWRender::MRenderer::setGeometryDrawDirty(thisMObject(), true);
     }
 
-    return MS::kSuccess;
+    return MPxLocatorNode::setDependentsDirty(plug, affectedPlugs);
 }

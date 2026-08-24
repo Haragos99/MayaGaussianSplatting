@@ -23,19 +23,33 @@ GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObje
     }
 	m_splatSize = 1.0f;
     MFnDependencyNode fnNode(obj);
-    auto* node = dynamic_cast<GaussianSplattingLocator*>(fnNode.userNode());
-    if (!node)
+    m_locator = dynamic_cast<GaussianSplattingLocator*>(fnNode.userNode());
+    if (!m_locator)
     {
 		MGlobal::displayError("Failed to get GaussianSplattingLocator node from MObject.");
     }
-	auto splats = node->loadSplatsFromFile();
-
-	m_splats = splats.first;
-	m_boundingBox = splats.second;
 
     m_dirty = true;
     m_geometryDirty = true;
     m_shaderDirty = true;
+    m_uiDirty = true;
+}
+
+const std::vector<GS::GaussianSplat>& GaussianSplattingSubSceneOverride::splats() const
+{
+    static const std::vector<GS::GaussianSplat> kNoSplats;
+
+    return m_locator ? m_locator->splats() : kNoSplats;
+}
+
+void GaussianSplattingSubSceneOverride::discardCachedGeometry()
+{
+    m_buffers.releaseAll();
+    m_camera.invalidate();
+    m_boundingBox.clear();
+
+    m_vertexBufferDirty = true;
+    m_indexBufferDirty = true;
     m_uiDirty = true;
 }
 
@@ -77,6 +91,9 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
         m_shaderDirty ||
         cameraNeedsResort ||
         sliderDirty ||
+        !m_locator ||
+        m_locator->needsReload() ||
+        m_locator->dataVersion() != m_dataVersion ||
         !m_buffers.isRenderable();
 }
 
@@ -96,10 +113,17 @@ void GaussianSplattingSubSceneOverride::update(
     m_splatSize = getSpaltSize();
 	m_splatSize = std::max(0.1f, std::min(m_splatSize, 1.0f));
 
+    // A new file path invalidates every cached buffer.
+    if (m_locator)
+    {
+        const unsigned int dataVersion = m_locator->syncSplatData();
 
-    MGlobal::displayInfo(
-        "Current splat size: " + MString() + m_splatSize
-    );
+        if (dataVersion != m_dataVersion)
+        {
+            m_dataVersion = dataVersion;
+            discardCachedGeometry();
+        }
+    }
 
     createOrUpdateRenderItem(container);
 
@@ -144,7 +168,7 @@ void GaussianSplattingSubSceneOverride::update(
 
     bindGeometry(*item);
 
-    item->enable(true);
+    item->enable(m_buffers.isRenderable());
 
     m_dirty = false;
     m_vertexBufferDirty = false;
@@ -182,7 +206,7 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
 
     MString splatSizeLabel;
     splatSizeLabel += "Gaussian splats: ";
-    splatSizeLabel += static_cast<int>(m_splats.size());
+    splatSizeLabel += static_cast<int>(splats().size());
 
     drawManager.text(
         MPoint(0.0, 1.5, 0.0),
@@ -462,10 +486,12 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
 {
     // Create splat IDs
     std::vector<unsigned int> sortedSplatIds;
-    sortedSplatIds.reserve(m_splats.size());
+    const std::vector<GS::GaussianSplat>& splatList = splats();
+
+    sortedSplatIds.reserve(splatList.size());
 
     for (unsigned int i = 0;
-        i < static_cast<unsigned int>(m_splats.size());
+        i < static_cast<unsigned int>(splatList.size());
         ++i)
     {
         sortedSplatIds.push_back(i);
@@ -491,10 +517,10 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
         [&](unsigned int a, unsigned int b)
         {
             const MPoint worldA =
-                m_splats[a].center * objectToWorld;
+                splatList[a].center * objectToWorld;
 
             const MPoint worldB =
-                m_splats[b].center * objectToWorld;
+                splatList[b].center * objectToWorld;
 
             const double depthA =
                 GS::ViewportCamera::depthAlongView(
@@ -525,7 +551,7 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
     std::vector<unsigned int> indices;
 
     indices.reserve(
-        m_splats.size() * VerticesPerSplat
+        splatList.size() * VerticesPerSplat
     );
 
 
@@ -560,12 +586,14 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce(
 {
     std::vector<GS::SplatVertex> vertices;
 
+    const std::vector<GS::GaussianSplat>& splatList = splats();
+
     // Two triangles / 6 vertices per splat.
-    vertices.reserve(m_splats.size() * 6);
+    vertices.reserve(splatList.size() * 6);
 
     m_boundingBox.clear();
 
-    for (const GS::GaussianSplat& splat : m_splats)
+    for (const GS::GaussianSplat& splat : splatList)
     {
         buildSplatVertices(
             splat,

@@ -56,6 +56,7 @@ add_library(MayaGaussianSplatting SHARED
  "src/data.h" "src/gaussianSplatPlyLoader.h" "src/gaussianSplatPlyLoader.cpp"
  "src/render/SplatBufferManager.h" "src/render/SplatBufferManager.cpp"
  "src/render/ViewportCamera.h" "src/render/ViewportCamera.cpp"
+ "src/scene/SplatDataSource.h" "src/scene/SplatDataSource.cpp"
  "src/ply/PlyTypes.h"
  "src/ply/PlyHeaderParser.h" "src/ply/PlyHeaderParser.cpp"
  "src/ply/PlyElementReader.h" "src/ply/PlyElementReader.cpp"
