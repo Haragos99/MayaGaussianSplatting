@@ -50,10 +50,7 @@ GaussianSplattingSubSceneOverride::~GaussianSplattingSubSceneOverride()
 {
     releaseShader();
 
-    m_positionBuffer.reset();
-    m_colorBuffer.reset();
-    m_uvBuffer.reset();
-    m_indexBuffer.reset();
+    m_buffers.releaseAll();
 }
 
 MHWRender::DrawAPI GaussianSplattingSubSceneOverride::supportedDrawAPIs() const
@@ -65,22 +62,11 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
     const MHWRender::MSubSceneContainer& container,
     const MHWRender::MFrameContext& frameContext) const
 {
-    MPoint cameraPosition;
-    MVector cameraRight;
-    MVector cameraUp;
-    MVector cameraForward;
-
-
-    const bool haveCamera = readCamera(
-        cameraPosition,
-        cameraRight,
-        cameraUp,
-        cameraForward);
+    GS::CameraState camera;
 
     const bool cameraNeedsResort =
-        haveCamera && cameraChangedEnoughForIndexRebuild(
-            cameraPosition,
-            cameraForward);
+        GS::ViewportCamera::readActive(camera) &&
+        m_camera.needsResort(camera);
 
     return
         container.count() == 0 ||
@@ -91,10 +77,7 @@ bool GaussianSplattingSubSceneOverride::requiresUpdate(
         m_shaderDirty ||
         cameraNeedsResort ||
         sliderDirty ||
-        !m_positionBuffer ||
-        !m_colorBuffer ||
-        !m_uvBuffer ||
-        !m_indexBuffer;
+        !m_buffers.isRenderable();
 }
 
 void GaussianSplattingSubSceneOverride::update(
@@ -136,66 +119,30 @@ void GaussianSplattingSubSceneOverride::update(
         item->setShader(m_splatShader);
     }
 
-    MPoint cameraPosition;
-    MVector cameraRight;
-    MVector cameraUp;
-    MVector cameraForward;
-
-    const bool haveCamera = readCamera(
-        cameraPosition,
-        cameraRight,
-        cameraUp,
-        cameraForward);
-
-    if (!haveCamera)
-    {
-        cameraPosition = MPoint(0.0, 0.0, 10.0);
-        cameraForward = MVector(0.0, 0.0, -1.0);
-    }
+    // Falls back to the CameraState defaults when no viewport camera is available.
+    GS::CameraState camera;
+    GS::ViewportCamera::readActive(camera);
 
     // Build static vertex buffers only when splat data changed.
-    if (
-        m_vertexBufferDirty ||
+    if (m_vertexBufferDirty ||
         sliderDirty ||
-        !m_positionBuffer ||
-        !m_colorBuffer ||
-        !m_uvBuffer)
+        !m_buffers.hasVertices())
     {
-       
-        buildStaticVertexBuffersOnce();
+        buildStaticVertexBuffersOnce(camera);
+
         // If vertices changed, the index buffer must also be rebuilt.
         m_indexBufferDirty = true;
     }
     
     // Rebuild only the sorted index buffer when the camera changed enough.
-    if (
-        m_indexBufferDirty ||
-        !m_indexBuffer ||
-        cameraChangedEnoughForIndexRebuild(cameraPosition, cameraForward))
+    if (m_indexBufferDirty ||
+        !m_buffers.hasIndices() ||
+        m_camera.needsResort(camera))
     {
-        rebuildSortedIndexBufferOnly(cameraPosition, cameraForward);
+        rebuildSortedIndexBufferOnly(camera);
     }
 
-    if (
-        m_positionBuffer &&
-        m_colorBuffer &&
-        m_uvBuffer &&
-        m_indexBuffer &&
-        m_vertexCount > 0 &&
-        m_indexCount > 0)
-    {
-        MHWRender::MVertexBufferArray vertexBuffers;
-
-        vertexBuffers.addBuffer("positions", m_positionBuffer.get());
-        vertexBuffers.addBuffer("colors", m_colorBuffer.get());
-        vertexBuffers.addBuffer("uvs", m_uvBuffer.get());
-
-        setGeometryForRenderItem(
-            *item,
-            vertexBuffers,
-            *m_indexBuffer,
-            &m_boundingBox);
-    }
+    bindGeometry(*item);
 
     item->enable(true);
 
@@ -487,91 +434,31 @@ void GaussianSplattingSubSceneOverride::releaseShader()
     m_shader = nullptr;
 }
 
-bool GaussianSplattingSubSceneOverride::readCamera(
-    MPoint& cameraWorldPosition,
-    MVector& cameraWorldRight,
-    MVector& cameraWorldUp,
-    MVector& cameraWorldForward) const
+void GaussianSplattingSubSceneOverride::bindGeometry(
+    MHWRender::MRenderItem& item)
 {
-    M3dView view = M3dView::active3dView();
-
-    MDagPath cameraPath;
-    MStatus status = view.getCamera(cameraPath);
-
-    if (!status || !cameraPath.isValid())
+    if (!m_buffers.isRenderable())
     {
-        return false;
+        return;
     }
 
-    MFnCamera camera(cameraPath, &status);
-    if (!status)
+    MHWRender::MVertexBufferArray vertexBuffers;
+
+    if (!m_buffers.fillVertexBufferArray(vertexBuffers))
     {
-        return false;
+        return;
     }
 
-    cameraWorldPosition = camera.eyePoint(MSpace::kWorld, &status);
-    if (!status)
-    {
-        return false;
-    }
-
-    const MMatrix cameraMatrix = cameraPath.inclusiveMatrix();
-
-    // These are camera local basis vectors transformed to world.
-    // Depending on your camera convention, forward may need sign adjustment.
-    cameraWorldRight = MVector(
-        cameraMatrix[0][0],
-        cameraMatrix[0][1],
-        cameraMatrix[0][2]);
-
-    cameraWorldUp = MVector(
-        cameraMatrix[1][0],
-        cameraMatrix[1][1],
-        cameraMatrix[1][2]);
-
-    cameraWorldForward = MVector(
-        -cameraMatrix[2][0],
-        -cameraMatrix[2][1],
-        -cameraMatrix[2][2]);
-
-    cameraWorldRight.normalize();
-    cameraWorldUp.normalize();
-    cameraWorldForward.normalize();
-
-    return true;
-}
-
-bool GaussianSplattingSubSceneOverride::cameraChanged(
-    const MPoint& cameraWorldPosition,
-    const MVector& cameraWorldForward) const
-{
-    if (!m_haveLastCamera)
-    {
-        return true;
-    }
-
-    const double positionDelta =
-        cameraWorldPosition.distanceTo(m_lastCameraPosition);
-
-    const double directionDelta =
-        1.0 - std::abs(cameraWorldForward.normal() * m_lastCameraForward.normal());
-
-    return positionDelta > 0.001 || directionDelta > 0.0001;
-}
-
-float GaussianSplattingSubSceneOverride::depthFromCamera(
-    const MPoint& worldPoint,
-    const MPoint& cameraWorldPosition,
-    const MVector& cameraWorldForward)
-{
-    const MVector toPoint = worldPoint - cameraWorldPosition;
-    return static_cast<float>(toPoint * cameraWorldForward);
+    setGeometryForRenderItem(
+        item,
+        vertexBuffers,
+        *m_buffers.indexBuffer(),
+        &m_boundingBox);
 }
 
 
 void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
-    const MPoint& cameraWorldPosition,
-    const MVector& cameraWorldForward)
+    const GS::CameraState& camera)
 {
     // Create splat IDs
     std::vector<unsigned int> sortedSplatIds;
@@ -610,17 +497,15 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
                 m_splats[b].center * objectToWorld;
 
             const double depthA =
-                depthFromCamera(
+                GS::ViewportCamera::depthAlongView(
                     worldA,
-                    cameraWorldPosition,
-                    cameraWorldForward
+                    camera
                 );
 
             const double depthB =
-                depthFromCamera(
+                GS::ViewportCamera::depthAlongView(
                     worldB,
-                    cameraWorldPosition,
-                    cameraWorldForward
+                    camera
                 );
 
             return depthA > depthB;
@@ -662,186 +547,16 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
         indices.push_back(base + 5);
     }
 
-    uploadIndexBuffer(indices);
-
-    m_indexCount =
-        static_cast<unsigned int>(
-            indices.size()
-            );
+    m_buffers.uploadIndices(indices);
 
     m_indexBufferDirty = false;
 
-
-    // Save camera state
-    m_haveLastCamera = true;
-
-    m_lastCameraPosition =
-        cameraWorldPosition;
-
-    m_lastCameraForward =
-        cameraWorldForward;
+    m_camera.commit(camera);
 }
 
 
-void GaussianSplattingSubSceneOverride::uploadVertexBuffers(
-    const std::vector<GS::SplatVertex>& vertices)
-{
-    m_positionBuffer.reset();
-    m_colorBuffer.reset();
-    m_uvBuffer.reset();
-
-    const unsigned int vertexCount =
-        static_cast<unsigned int>(vertices.size());
-
-    if (vertexCount == 0)
-    {
-        m_vertexCount = 0;
-        return;
-    }
-
-    MHWRender::MVertexBufferDescriptor positionDesc(
-        "",
-        MHWRender::MGeometry::kPosition,
-        MHWRender::MGeometry::kFloat,
-        3);
-
-    MHWRender::MVertexBufferDescriptor colorDesc(
-        "",
-        MHWRender::MGeometry::kColor,
-        MHWRender::MGeometry::kFloat,
-        4);
-
-    MHWRender::MVertexBufferDescriptor uvDesc(
-        "",
-        MHWRender::MGeometry::kTexture,
-        MHWRender::MGeometry::kFloat,
-        2);
-
-    m_positionBuffer =
-        std::make_unique<MHWRender::MVertexBuffer>(positionDesc);
-
-    m_colorBuffer =
-        std::make_unique<MHWRender::MVertexBuffer>(colorDesc);
-
-    m_uvBuffer =
-        std::make_unique<MHWRender::MVertexBuffer>(uvDesc);
-
-    float* positions =
-        static_cast<float*>(m_positionBuffer->acquire(vertexCount, true));
-
-    float* colors =
-        static_cast<float*>(m_colorBuffer->acquire(vertexCount, true));
-
-    float* uvs =
-        static_cast<float*>(m_uvBuffer->acquire(vertexCount, true));
-
-    if (!positions || !colors || !uvs)
-    {
-        m_positionBuffer.reset();
-        m_colorBuffer.reset();
-        m_uvBuffer.reset();
-
-        m_vertexCount = 0;
-        return;
-    }
-
-    for (unsigned int i = 0; i < vertexCount; ++i)
-    {
-        const GS::SplatVertex& vertex = vertices[i];
-
-        positions[i * 3 + 0] = vertex.position[0];
-        positions[i * 3 + 1] = vertex.position[1];
-        positions[i * 3 + 2] = vertex.position[2];
-
-        colors[i * 4 + 0] = vertex.color[0];
-        colors[i * 4 + 1] = vertex.color[1];
-        colors[i * 4 + 2] = vertex.color[2];
-        colors[i * 4 + 3] = vertex.color[3];
-
-        uvs[i * 2 + 0] = vertex.uv[0];
-        uvs[i * 2 + 1] = vertex.uv[1];
-    }
-
-    m_positionBuffer->commit(positions);
-    m_colorBuffer->commit(colors);
-    m_uvBuffer->commit(uvs);
-
-    m_vertexCount = vertexCount;
-}
-
-
-bool GaussianSplattingSubSceneOverride::cameraChangedEnoughForIndexRebuild(
-    const MPoint& cameraWorldPosition,
-    const MVector& cameraWorldForward) const
-{
-    if (!m_haveLastCamera)
-    {
-        return true;
-    }
-
-    const double positionDelta =
-        cameraWorldPosition.distanceTo(m_lastCameraPosition);
-
-    const MVector currentForward = cameraWorldForward.normal();
-    const MVector lastForward = m_lastCameraForward.normal();
-
-    const double directionDot =
-        std::max(-1.0, std::min(1.0, currentForward * lastForward));
-
-    const double directionDelta =
-        1.0 - std::abs(directionDot);
-
-    // Tune these values.
-    // Larger values = fewer sorts, faster viewport, less accurate transparency.
-    constexpr double kPositionThreshold = 0.05;
-    constexpr double kDirectionThreshold = 0.002;
-
-    return
-        positionDelta > kPositionThreshold ||
-        directionDelta > kDirectionThreshold;
-}
-
-
-void GaussianSplattingSubSceneOverride::uploadIndexBuffer(
-    const std::vector<unsigned int>& indices)
-{
-    m_indexBuffer.reset();
-
-    const unsigned int indexCount =
-        static_cast<unsigned int>(indices.size());
-
-    if (indexCount == 0)
-    {
-        m_indexCount = 0;
-        return;
-    }
-
-    m_indexBuffer =
-        std::make_unique<MHWRender::MIndexBuffer>(
-            MHWRender::MGeometry::kUnsignedInt32);
-
-    unsigned int* dst =
-        static_cast<unsigned int*>(m_indexBuffer->acquire(indexCount, true));
-
-    if (!dst)
-    {
-        m_indexBuffer.reset();
-        m_indexCount = 0;
-        return;
-    }
-
-    for (unsigned int i = 0; i < indexCount; ++i)
-    {
-        dst[i] = indices[i];
-    }
-
-    m_indexBuffer->commit(dst);
-
-    m_indexCount = indexCount;
-}
-
-
-void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
+void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce(
+    const GS::CameraState& camera)
 {
     std::vector<GS::SplatVertex> vertices;
 
@@ -850,37 +565,17 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce()
 
     m_boundingBox.clear();
 
-    // Camera is common to all splats.
-    MPoint cameraPosition;
-    MVector cameraRight;
-    MVector cameraUp;
-    MVector cameraForward;
-
-    readCamera(
-        cameraPosition,
-        cameraRight,
-        cameraUp,
-        cameraForward
-    );
-
-    cameraRight.normalize();
-    cameraUp.normalize();
-    cameraForward.normalize();
-
     for (const GS::GaussianSplat& splat : m_splats)
     {
         buildSplatVertices(
             splat,
-            cameraRight,
-            cameraUp,
+            camera.right,
+            camera.up,
             vertices
         );
     }
 
-    uploadVertexBuffers(vertices);
-
-    m_vertexCount =
-        static_cast<unsigned int>(vertices.size());
+    m_buffers.uploadVertices(vertices);
 
     m_vertexBufferDirty = false;
 }

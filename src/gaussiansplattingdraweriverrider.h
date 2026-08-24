@@ -18,6 +18,8 @@
 #include "data.h"
 #include <chrono>
 #include "gaussiansplattingnode.h"
+#include "render/SplatBufferManager.h"
+#include "render/ViewportCamera.h"
 
 using namespace MHWRender;
 
@@ -85,39 +87,15 @@ private:
     void createShader();
 
     void releaseShader();
-    bool readCamera(
-        MPoint& cameraWorldPosition,
-        MVector& cameraWorldRight,
-        MVector& cameraWorldUp,
-        MVector& cameraWorldForward) const;
 
-    bool cameraChanged(
-        const MPoint& cameraWorldPosition,
-        const MVector& cameraWorldForward) const;
-
-    void buildStaticVertexBuffersOnce();
+    void buildStaticVertexBuffersOnce(
+        const GS::CameraState& camera);
 
     void rebuildSortedIndexBufferOnly(
-        const MPoint& cameraWorldPosition,
-        const MVector& cameraWorldForward);
+        const GS::CameraState& camera);
 
-    bool cameraChangedEnoughForIndexRebuild(
-        const MPoint& cameraWorldPosition,
-        const MVector& cameraWorldForward) const;
-
-    void uploadVertexBuffers(
-        const std::vector<GS::SplatVertex>& vertices);
-
-    void uploadIndexBuffer(
-        const std::vector<unsigned int>& indices);
-
-
-
-
-    static float depthFromCamera(
-        const MPoint& worldPoint,
-        const MPoint& cameraWorldPosition,
-        const MVector& cameraWorldForward);
+    void bindGeometry(
+        MHWRender::MRenderItem& item);
 
 private:
 
@@ -176,19 +154,10 @@ private:
 
     MBoundingBox m_boundingBox;
 
-    std::unique_ptr<MHWRender::MVertexBuffer> m_positionBuffer;
-    std::unique_ptr<MHWRender::MVertexBuffer> m_colorBuffer;
-    std::unique_ptr<MHWRender::MVertexBuffer> m_uvBuffer;
-    std::unique_ptr<MHWRender::MIndexBuffer>  m_indexBuffer;
+    GS::SplatBufferManager m_buffers;
+    GS::ViewportCamera m_camera;
 
     MHWRender::MShaderInstance* m_shader = nullptr;
-
-    mutable bool m_haveLastCamera = false;
-    mutable MPoint m_lastCameraPosition;
-    mutable MVector m_lastCameraForward;
-
-    unsigned int m_vertexCount = 0;
-    unsigned int m_indexCount = 0;
 };
 
 
