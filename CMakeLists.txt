@@ -62,7 +62,7 @@ add_library(MayaGaussianSplatting SHARED
  "src/ply/PlyElementReader.h" "src/ply/PlyElementReader.cpp"
  "src/ply/SplatDecoder.h"
  "src/ply/StandardSplatDecoder.h" "src/ply/StandardSplatDecoder.cpp"
- "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp")
+ "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp" "src/splatCalculator.h" "src/splatCalculator.cpp")
 
 
 # Include directories

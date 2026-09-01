@@ -24,7 +24,7 @@ MStatus GaussianSplattingLocator::initialize()
 
     aSplatSize = typedAttr.create("splatSize", "splatSize", MFnNumericData::kFloat);
     typedAttr.setMin(0.1f);     // slider min
-    typedAttr.setMax(1.0f);    // slider max
+    typedAttr.setMax(2.0f);    // slider max
     typedAttr.setKeyable(true);
     typedAttr.setStorable(true);
     typedAttr.setReadable(true);
