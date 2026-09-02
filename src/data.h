@@ -36,6 +36,10 @@ struct Splat {
 
 namespace GS
 {
+    // One splat quad = 4 shared corners referenced by 2 triangles.
+    constexpr unsigned int kVerticesPerSplatQuad = 4;
+    constexpr unsigned int kIndicesPerSplatQuad = 6;
+
     struct GaussianSplat
     {
         MPoint center;      // Object-space center.

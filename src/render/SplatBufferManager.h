@@ -23,7 +23,9 @@ namespace GS
         // Uploads interleaved splat vertices into the position/color/uv streams.
         bool uploadVertices(const std::vector<SplatVertex>& vertices);
 
-        bool uploadIndices(const std::vector<unsigned int>& indices);
+        // Expands a back-to-front quad order into triangle indices, writing
+        // directly into the mapped GPU buffer.
+        bool uploadQuadIndices(const std::vector<unsigned int>& quadOrder);
 
         // True when every stream plus the index buffer holds drawable data.
         bool isRenderable() const;

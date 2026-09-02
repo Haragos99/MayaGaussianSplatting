@@ -19,6 +19,7 @@
 #include <chrono>
 #include "gaussiansplattingnode.h"
 #include "render/SplatBufferManager.h"
+#include "render/SplatDepthSorter.h"
 #include "render/ViewportCamera.h"
 
 using namespace MHWRender;
@@ -97,6 +98,9 @@ private:
 
     void rebuildSortedIndexBufferOnly(const GS::CameraState& camera);
 
+    // Camera re-expressed in the node's object space, where the splats live.
+    GS::CameraState objectSpaceCamera(const GS::CameraState& camera) const;
+
     void bindGeometry(MHWRender::MRenderItem& item);
 
     static const MString kRenderItemName;
@@ -125,6 +129,7 @@ private:
 
     GS::SplatBufferManager m_buffers;
     GS::ViewportCamera m_camera;
+    GS::SplatDepthSorter m_sorter;
 
 };
 

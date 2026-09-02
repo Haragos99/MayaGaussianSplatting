@@ -47,6 +47,7 @@ void GaussianSplattingSubSceneOverride::discardCachedGeometry()
 {
     m_buffers.releaseAll();
     m_camera.invalidate();
+    m_sorter.clear();
     m_boundingBox.clear();
 
     m_vertexBufferDirty = true;
@@ -465,93 +466,32 @@ void GaussianSplattingSubSceneOverride::bindGeometry(
 }
 
 
+GS::CameraState GaussianSplattingSubSceneOverride::objectSpaceCamera(
+    const GS::CameraState& camera) const
+{
+    if (!m_dagPath.isValid())
+    {
+        return camera;
+    }
+
+    return GS::ViewportCamera::toSpace(
+        camera,
+        m_dagPath.inclusiveMatrixInverse());
+}
+
+
 void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
     const GS::CameraState& camera)
 {
-    // Create splat IDs
-    std::vector<unsigned int> sortedSplatIds;
-    const std::vector<GS::GaussianSplat>& splatList = splats();
+    // The splat centers are cached in object space, so the camera is brought
+    // into that space once instead of transforming every splat per frame.
+    const GS::CameraState localCamera = objectSpaceCamera(camera);
 
-    sortedSplatIds.reserve(splatList.size());
+    // Back-to-front order, required for correct alpha blending.
+    const std::vector<unsigned int>& quadOrder =
+        m_sorter.sortBackToFront(localCamera.forward);
 
-    for (unsigned int i = 0;
-        i < static_cast<unsigned int>(splatList.size());
-        ++i)
-    {
-        sortedSplatIds.push_back(i);
-    }
-
-    // Object -> world matrix
-    MMatrix objectToWorld;
-
-    if (m_dagPath.isValid())
-    {
-        objectToWorld = m_dagPath.inclusiveMatrix();
-    }
-
-    // Sort splats back-to-front
-    //
-    // Important for alpha blending.
-    
-    std::sort(
-        sortedSplatIds.begin(),
-        sortedSplatIds.end(),
-        [&](unsigned int a, unsigned int b)
-        {
-            const MPoint worldA =
-                splatList[a].center * objectToWorld;
-
-            const MPoint worldB =
-                splatList[b].center * objectToWorld;
-
-            const double depthA =
-                GS::ViewportCamera::depthAlongView(
-                    worldA,
-                    camera
-                );
-
-            const double depthB =
-                GS::ViewportCamera::depthAlongView(
-                    worldB,
-                    camera
-                );
-
-            return depthA > depthB;
-        }
-    );
-    
-    // Each splat now has exactly:
-    //     6 vertices
-    // representing:
-    //     triangle 1: 0,1,2
-    //     triangle 2: 3,4,5
-    // Therefore:
-    //     indices per splat = 6
-    constexpr unsigned int VerticesPerSplat = 6;
-
-    std::vector<unsigned int> indices;
-
-    indices.reserve(
-        splatList.size() * VerticesPerSplat
-    );
-
-    for (unsigned int splatId : sortedSplatIds)
-    {
-        const unsigned int base =
-            splatId * VerticesPerSplat;
-
-        // Triangle 1
-        indices.push_back(base + 0);
-        indices.push_back(base + 1);
-        indices.push_back(base + 2);
-
-        // Triangle 2
-        indices.push_back(base + 3);
-        indices.push_back(base + 4);
-        indices.push_back(base + 5);
-    }
-
-    m_buffers.uploadIndices(indices);
+    m_buffers.uploadQuadIndices(quadOrder);
 
     m_indexBufferDirty = false;
 
@@ -561,25 +501,35 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
 void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce(
     const GS::CameraState& camera)
 {
-    std::vector<GS::SplatVertex> vertices;
-
     const std::vector<GS::GaussianSplat>& splatList = splats();
 
-    // Two triangles / 6 vertices per splat.
-    vertices.reserve(splatList.size() * 6);
+    std::vector<GS::SplatVertex> vertices;
+
+    vertices.reserve(splatList.size() * GS::kVerticesPerSplatQuad);
 
     m_boundingBox.clear();
 
+    m_sorter.clear();
+    m_sorter.reserve(splatList.size());
+
+    const GS::CameraState localCamera = objectSpaceCamera(camera);
+
+    SplatProjectionBasis basis;
+    basis.right = localCamera.right;
+    basis.up = localCamera.up;
+
     for (const GS::GaussianSplat& splat : splatList)
     {
-        SplatCalculator::buildSplatVertices(
-            splat,
-            camera.right,
-            camera.up,
-            vertices,
-            m_splatSize,
-            m_boundingBox
-        );
+        // Culled splats produce no quad, so they cost no sorting work either.
+        if (SplatCalculator::buildSplatVertices(
+                splat,
+                basis,
+                vertices,
+                m_splatSize,
+                m_boundingBox))
+        {
+            m_sorter.addCenter(splat.center);
+        }
     }
 
     m_buffers.uploadVertices(vertices);

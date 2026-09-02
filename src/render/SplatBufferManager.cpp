@@ -84,18 +84,21 @@ namespace GS
     }
 
 
-    bool SplatBufferManager::uploadIndices(
-        const std::vector<unsigned int>& indices)
+    bool SplatBufferManager::uploadQuadIndices(
+        const std::vector<unsigned int>& quadOrder)
     {
         releaseIndices();
 
-        const unsigned int indexCount =
-            static_cast<unsigned int>(indices.size());
+        const unsigned int quadCount =
+            static_cast<unsigned int>(quadOrder.size());
 
-        if (indexCount == 0)
+        if (quadCount == 0)
         {
             return false;
         }
+
+        const unsigned int indexCount =
+            quadCount * kIndicesPerSplatQuad;
 
         m_indexBuffer =
             std::make_unique<MHWRender::MIndexBuffer>(
@@ -110,9 +113,21 @@ namespace GS
             return false;
         }
 
-        for (unsigned int i = 0; i < indexCount; ++i)
+        for (unsigned int i = 0; i < quadCount; ++i)
         {
-            destination[i] = indices[i];
+            const unsigned int base =
+                quadOrder[i] * kVerticesPerSplatQuad;
+
+            unsigned int* triangles =
+                destination + i * kIndicesPerSplatQuad;
+
+            triangles[0] = base + 0;
+            triangles[1] = base + 1;
+            triangles[2] = base + 2;
+
+            triangles[3] = base + 0;
+            triangles[4] = base + 2;
+            triangles[5] = base + 3;
         }
 
         m_indexBuffer->commit(destination);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <maya/MMatrix.h>
 #include <maya/MPoint.h>
 #include <maya/MVector.h>
 
@@ -22,6 +23,12 @@ namespace GS
     public:
         // Fills state with the active 3d view camera. Leaves state untouched on failure.
         static bool readActive(CameraState& state);
+
+        // Re-expresses the camera in another space, for example object space
+        // through the world-to-object matrix. Assumes a rigid transform.
+        static CameraState toSpace(
+            const CameraState& state,
+            const MMatrix& transform);
 
         // Signed distance of a world point along the camera view direction.
         static double depthAlongView(

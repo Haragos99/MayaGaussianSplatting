@@ -1,35 +1,38 @@
 #include "splatCalculator.h"
 
-void SplatCalculator::buildSplatVertices(
+#include <algorithm>
+#include <cmath>
+
+bool SplatCalculator::buildSplatVertices(
     const GS::GaussianSplat& splat,
-    const MVector& cameraRight,
-    const MVector& cameraUp,
+    const SplatProjectionBasis& basis,
     std::vector<GS::SplatVertex>& vertices,
     float splatSize,
     MBoundingBox& boundingBox
 )
 {
-    // Build covariance from rotation + scale.
-    const MMatrix covariance = buildCovariance(splat, splatSize);
+    // A splat under 1/255 alpha can never change a pixel, so it is dropped
+    // before it costs any vertex, index or sorting work.
+    if (splat.opacity < kMinAlpha)
+    {
+        return false;
+    }
 
-    // Project the 3D covariance onto the camera plane.
-    const MMatrix covariance2D = projectCovarianceToCamera(
-            covariance,
-            cameraRight,
-            cameraUp
-        );
+    const SplatCovariance3 covariance = buildCovariance(splat, splatSize);
 
-    // Convert the 2D covariance into ellipse axes.
-    constexpr double sigmaMultiplier = 3.0;
+    float c00 = 0.0f;
+    float c01 = 0.0f;
+    float c11 = 0.0f;
 
-    const ProjectedEllipse ellipse = calculateEllipseAxes(
-            covariance2D,
-            cameraRight,
-            cameraUp,
-            sigmaMultiplier
-        );
+    projectCovarianceToCamera(covariance, basis, c00, c01, c11);
 
-    // Create the actual quad.
+    ProjectedEllipse ellipse;
+
+    if (!calculateEllipseAxes(c00, c01, c11, basis, ellipse))
+    {
+        return false;
+    }
+
     appendSplatQuad(
         splat,
         ellipse.axisX,
@@ -37,241 +40,197 @@ void SplatCalculator::buildSplatVertices(
         vertices,
         boundingBox
     );
+
+    return true;
 }
 
-// Build 3D Gaussian covariance
-// Sigma = R * S * S^T * R^T
-MMatrix SplatCalculator::buildCovariance(const GS::GaussianSplat& splat, float splatSize)
-{
-    MQuaternion q(
-        splat.rotation[0],
-        splat.rotation[1],
-        splat.rotation[2],
-        splat.rotation[3]
-    );
-
-    q.normalizeIt();
-
-
-    // Rotation matrix
-    const MMatrix rotation =
-        q.asMatrix();
-
-    // S^2 diagonal matrix
-    // Instead of explicitly creating:
-    // S * S.transpose()
-    // directly create:
-    // diag(sx^2, sy^2, sz^2)
-    MMatrix scaleSquared;
-    scaleSquared.setToIdentity();
-
-    const double sx =
-        static_cast<double>(splat.scaleX) * splatSize;
-
-    const double sy =
-        static_cast<double>(splat.scaleY) * splatSize;
-
-    const double sz =
-        static_cast<double>(splat.scaleZ) * splatSize;
-
-    scaleSquared[0][0] = sx * sx;
-    scaleSquared[1][1] = sy * sy;
-    scaleSquared[2][2] = sz * sz;
-
-
-    // Covariance
-    return
-        rotation *
-        scaleSquared *
-        rotation.transpose();
-}
-
-
-// Project 3D covariance into camera plane
+// Build the 3D Gaussian covariance straight from the quaternion and the scale.
 //
-// Returns:
+//     Sigma = R * S * S^T * R^T = M * M^T   with   M = R * S      [KKLD23] Eq. 6
+//
+// Only the six unique components are kept, everything stays in float and no
+// MQuaternion / MMatrix temporary is built per splat.
+SplatCovariance3 SplatCalculator::buildCovariance(
+    const GS::GaussianSplat& splat,
+    float splatSize)
+{
+    // The PLY decoders store the quaternion as {w, x, y, z}.
+    float w = splat.rotation[0];
+    float x = splat.rotation[1];
+    float y = splat.rotation[2];
+    float z = splat.rotation[3];
+
+    const float lengthSquared =
+        w * w + x * x + y * y + z * z;
+
+    if (lengthSquared > 1.0e-12f)
+    {
+        const float inverseLength =
+            1.0f / std::sqrt(lengthSquared);
+
+        w *= inverseLength;
+        x *= inverseLength;
+        y *= inverseLength;
+        z *= inverseLength;
+    }
+    else
+    {
+        w = 1.0f;
+        x = 0.0f;
+        y = 0.0f;
+        z = 0.0f;
+    }
+
+
+    const float sx = splat.scaleX * splatSize;
+    const float sy = splat.scaleY * splatSize;
+    const float sz = splat.scaleZ * splatSize;
+
+
+    // Columns of the rotation matrix, already scaled: M = R * S.
+    const float m00 = (1.0f - 2.0f * (y * y + z * z)) * sx;
+    const float m10 = (2.0f * (x * y + w * z)) * sx;
+    const float m20 = (2.0f * (x * z - w * y)) * sx;
+
+    const float m01 = (2.0f * (x * y - w * z)) * sy;
+    const float m11 = (1.0f - 2.0f * (x * x + z * z)) * sy;
+    const float m21 = (2.0f * (y * z + w * x)) * sy;
+
+    const float m02 = (2.0f * (x * z + w * y)) * sz;
+    const float m12 = (2.0f * (y * z - w * x)) * sz;
+    const float m22 = (1.0f - 2.0f * (x * x + y * y)) * sz;
+
+
+    SplatCovariance3 covariance;
+
+    covariance.xx = m00 * m00 + m01 * m01 + m02 * m02;
+    covariance.xy = m00 * m10 + m01 * m11 + m02 * m12;
+    covariance.xz = m00 * m20 + m01 * m21 + m02 * m22;
+    covariance.yy = m10 * m10 + m11 * m11 + m12 * m12;
+    covariance.yz = m10 * m20 + m11 * m21 + m12 * m22;
+    covariance.zz = m20 * m20 + m21 * m21 + m22 * m22;
+
+    return covariance;
+}
+
+
+// Project the 3D covariance onto the camera plane.
+//
+//     Sigma' = W * Sigma * W^T      [KKLD23] Eq. 5 / [ZPBG01] EWA
+//
+// Returns the three unique entries of:
 //
 //     [ c00  c01 ]
 //     [ c01  c11 ]
+
+void SplatCalculator::projectCovarianceToCamera(
+    const SplatCovariance3& covariance,
+    const SplatProjectionBasis& basis,
+    float& c00,
+    float& c01,
+    float& c11)
+{
+    const float rx = static_cast<float>(basis.right.x);
+    const float ry = static_cast<float>(basis.right.y);
+    const float rz = static_cast<float>(basis.right.z);
+
+    const float ux = static_cast<float>(basis.up.x);
+    const float uy = static_cast<float>(basis.up.y);
+    const float uz = static_cast<float>(basis.up.z);
+
+
+    // Sigma * right and Sigma * up, shared by the three quadratic forms.
+    const float sr0 = covariance.xx * rx + covariance.xy * ry + covariance.xz * rz;
+    const float sr1 = covariance.xy * rx + covariance.yy * ry + covariance.yz * rz;
+    const float sr2 = covariance.xz * rx + covariance.yz * ry + covariance.zz * rz;
+
+    const float su0 = covariance.xx * ux + covariance.xy * uy + covariance.xz * uz;
+    const float su1 = covariance.xy * ux + covariance.yy * uy + covariance.yz * uz;
+    const float su2 = covariance.xz * ux + covariance.yz * uy + covariance.zz * uz;
+
+
+    c00 = rx * sr0 + ry * sr1 + rz * sr2;
+    c01 = rx * su0 + ry * su1 + rz * su2;
+    c11 = ux * su0 + uy * su1 + uz * su2;
+}
+
+
+// Eigen decomposition of the 2x2 conic.
 //
-// Stored in the upper-left 2x2 portion of an MMatrix.
-
-MMatrix SplatCalculator::projectCovarianceToCamera(
-    const MMatrix& covariance,
-    const MVector& cameraRight,
-    const MVector& cameraUp) 
+// The eigenvector of the larger eigenvalue can be read directly out of the
+// matrix, which removes the atan2 + cos + sin the old version ran per splat.
+bool SplatCalculator::calculateEllipseAxes(
+    float c00,
+    float c01,
+    float c11,
+    const SplatProjectionBasis& basis,
+    ProjectedEllipse& ellipse)
 {
-    const double c00 =
-        covarianceQuadraticForm(
-            covariance,
-            cameraRight,
-            cameraRight
-        );
+    const float middle = 0.5f * (c00 + c11);
 
+    const float determinant = c00 * c11 - c01 * c01;
 
-    const double c01 =
-        covarianceQuadraticForm(
-            covariance,
-            cameraRight,
-            cameraUp
-        );
-
-
-    const double c11 =
-        covarianceQuadraticForm(
-            covariance,
-            cameraUp,
-            cameraUp
-        );
-
-
-    MMatrix covariance2D;
-    covariance2D.setToIdentity();
-
-    covariance2D[0][0] = c00;
-    covariance2D[0][1] = c01;
-    covariance2D[1][0] = c01;
-    covariance2D[1][1] = c11;
-
-    return covariance2D;
-}
-
-
-// Calculate v^T * Sigma * w
-double SplatCalculator::covarianceQuadraticForm(
-    const MMatrix& covariance,
-    const MVector& v,
-    const MVector& w) 
-{
-    return
-        v.x * (
-            covariance[0][0] * w.x +
-            covariance[0][1] * w.y +
-            covariance[0][2] * w.z
-            )
-        +
-        v.y * (
-            covariance[1][0] * w.x +
-            covariance[1][1] * w.y +
-            covariance[1][2] * w.z
-            )
-        +
-        v.z * (
-            covariance[2][0] * w.x +
-            covariance[2][1] * w.y +
-            covariance[2][2] * w.z
-            );
-}
-
-
-// Calculate ellipse axes from 2D covariance
-ProjectedEllipse SplatCalculator::calculateEllipseAxes(
-    const MMatrix& covariance2D,
-    const MVector& cameraRight,
-    const MVector& cameraUp,
-    double sigmaMultiplier) 
-{
-    const double c00 =
-        covariance2D[0][0];
-
-    const double c01 =
-        covariance2D[0][1];
-
-    const double c11 =
-        covariance2D[1][1];
-
-
-    // Eigenvalues of:
-    //     [ c00 c01 ]
-    //     [ c01 c11 ]
-    const double trace =
-        c00 + c11;
-
-    const double diff =
-        c00 - c11;
-
-    const double discriminant =
+    const float discriminant =
         std::sqrt(
             std::max(
-                0.0,
-                diff * diff +
-                4.0 * c01 * c01
+                0.0f,
+                middle * middle - determinant
             )
         );
 
+    const float lambdaMajor = middle + discriminant;
+    const float lambdaMinor = middle - discriminant;
 
-    const double lambdaMajor =
-        0.5 * (trace + discriminant);
+    // Degenerate splat: no visible area at all.
+    if (lambdaMajor <= 0.0f)
+    {
+        return false;
+    }
 
-    const double lambdaMinor =
-        0.5 * (trace - discriminant);
+
+    // Eigenvector of lambdaMajor.
+    float ex = lambdaMajor - c11;
+    float ey = c01;
+
+    const float eigenLengthSquared = ex * ex + ey * ey;
+
+    if (eigenLengthSquared > 1.0e-20f)
+    {
+        const float inverseLength =
+            1.0f / std::sqrt(eigenLengthSquared);
+
+        ex *= inverseLength;
+        ey *= inverseLength;
+    }
+    else
+    {
+        ex = 1.0f;
+        ey = 0.0f;
+    }
 
 
-    // Eigenvalue = variance
-    // sqrt(variance) = sigma
-    const double sigmaMajor =
-        std::sqrt(
-            std::max(
-                0.0,
-                lambdaMajor
-            )
+    // Eigenvalue = variance, sqrt(variance) = sigma.
+    const float sigmaMajor = std::sqrt(lambdaMajor);
+
+    // Low pass filter so needle thin splats keep a non degenerate quad.
+    const float sigmaMinor =
+        std::max(
+            std::sqrt(std::max(0.0f, lambdaMinor)),
+            sigmaMajor * kMinAxisRatio
         );
 
-    const double sigmaMinor =
-        std::sqrt(
-            std::max(
-                0.0,
-                lambdaMinor
-            )
-        );
 
+    // basis.right and basis.up are orthonormal, so rotating them by the
+    // eigenvector already yields unit vectors: no normalize() needed.
+    ellipse.axisX =
+        (basis.right * ex + basis.up * ey) *
+        static_cast<double>(sigmaMajor * kSigmaExtent);
 
-    // Eigenvector angle
-    const double angle =
-        0.5 * std::atan2(
-            2.0 * c01,
-            c00 - c11
-        );
+    ellipse.axisY =
+        (basis.right * -ey + basis.up * ex) *
+        static_cast<double>(sigmaMinor * kSigmaExtent);
 
-
-    const double c =
-        std::cos(angle);
-
-    const double s =
-        std::sin(angle);
-
-
-    // Rotate camera basis into ellipse basis
-    MVector axisX =
-        cameraRight * c +
-        cameraUp * s;
-
-    MVector axisY =
-        cameraRight * -s +
-        cameraUp * c;
-
-
-    axisX.normalize();
-    axisY.normalize();
-
-
-    // ------------------------------------------------------------------------
-    // Scale to desired Gaussian radius.
-    //
-    // 3 sigma is a reasonable visualization extent.
-    // ------------------------------------------------------------------------
-
-    axisX *=
-        sigmaMajor * sigmaMultiplier;
-
-    axisY *=
-        sigmaMinor * sigmaMultiplier;
-
-
-    return {
-        axisX,
-        axisY
-    };
+    return true;
 }
 
 
@@ -353,55 +312,12 @@ void SplatCalculator::appendSplatQuad(
         axisY;
 
 
-    // Triangle 1
-    vertices.push_back(
-        makeVertex(
-            bottomLeft,
-            -1.0f,
-            -1.0f
-        )
-    );
-
-    vertices.push_back(
-        makeVertex(
-            bottomRight,
-            1.0f,
-            -1.0f
-        )
-    );
-
-    vertices.push_back(
-        makeVertex(
-            topRight,
-            1.0f,
-            1.0f
-        )
-    );
-
-    // Triangle 2
-    vertices.push_back(
-        makeVertex(
-            bottomLeft,
-            -1.0f,
-            -1.0f
-        )
-    );
-
-    vertices.push_back(
-        makeVertex(
-            topRight,
-            1.0f,
-            1.0f
-        )
-    );
-
-    vertices.push_back(
-        makeVertex(
-            topLeft,
-            -1.0f,
-            1.0f
-        )
-    );
+    // Four shared corners. The index buffer stitches the two triangles, which
+    // is a third less vertex data than emitting six standalone vertices.
+    vertices.push_back(makeVertex(bottomLeft, -1.0f, -1.0f));
+    vertices.push_back(makeVertex(bottomRight, 1.0f, -1.0f));
+    vertices.push_back(makeVertex(topRight, 1.0f, 1.0f));
+    vertices.push_back(makeVertex(topLeft, -1.0f, 1.0f));
 
     // Bounding box
     boundingBox.expand(bottomLeft);

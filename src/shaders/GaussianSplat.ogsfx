@@ -64,16 +64,18 @@ GLSLShader FS
         // ------------------------------------------------------------
         // Gaussian.
         //
-        // Center:
-        //     r2 = 0
-        //     gaussian = 1
+        // uv spans [-1, 1] over a quad that covers 3 sigma
+        // (SplatCalculator::kSigmaExtent), so the exponent has to be
+        // scaled by 3^2 to evaluate exp(-0.5 * d^2) in sigma units.
         //
-        // Further from center:
-        //     gaussian decreases smoothly.
+        // Center:
+        //     r2 = 0        -> gaussian = 1
+        // Quad edge:
+        //     r2 = 1        -> gaussian = exp(-4.5)
         // ------------------------------------------------------------
 
         float gaussian =
-            exp(-0.5 * r2);
+            exp(-4.5 * r2);
 
 
         // Apply Gaussian to the original opacity.
@@ -82,8 +84,8 @@ GLSLShader FS
             gaussian;
 
 
-        // Remove almost invisible pixels.-
-        if (alpha < 0.001)
+        // Below 1/255 the pixel cannot change the framebuffer.
+        if (alpha < 0.00392156862)
         {
             discard;
         }

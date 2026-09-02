@@ -77,6 +77,23 @@ namespace GS
     }
 
 
+    CameraState ViewportCamera::toSpace(
+        const CameraState& state,
+        const MMatrix& transform)
+    {
+        CameraState result;
+
+        result.position = state.position * transform;
+
+        // MVector * MMatrix uses the rotation part only.
+        result.right = (state.right * transform).normal();
+        result.up = (state.up * transform).normal();
+        result.forward = (state.forward * transform).normal();
+
+        return result;
+    }
+
+
     bool ViewportCamera::needsResort(const CameraState& state) const
     {
         if (!m_hasReference)
