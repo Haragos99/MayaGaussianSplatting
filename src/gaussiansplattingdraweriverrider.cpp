@@ -145,12 +145,12 @@ void GaussianSplattingSubSceneOverride::update(
     GS::CameraState camera;
     GS::ViewportCamera::readActive(camera);
 
-    // Build static vertex buffers only when splat data changed.
+    // The quads are camera independent now, so this only reacts to data changes.
     if (m_vertexBufferDirty ||
         sliderDirty ||
         !m_buffers.hasVertices())
     {
-        buildStaticVertexBuffersOnce(camera);
+        buildVertexBuffers();
 
         // If vertices changed, the index buffer must also be rebuilt.
         m_indexBufferDirty = true;
@@ -421,6 +421,32 @@ void GaussianSplattingSubSceneOverride::createShader()
     MGlobal::displayInfo(
         "Gaussian splat OGSFX shader loaded."
     );
+
+    // The streams SplatBufferManager fills must match this list, otherwise the
+    // draw silently produces nothing.
+    MHWRender::MVertexBufferDescriptorList requiredBuffers;
+
+    if (m_splatShader->requiredVertexBuffers(requiredBuffers))
+    {
+        for (int i = 0; i < requiredBuffers.length(); ++i)
+        {
+            MHWRender::MVertexBufferDescriptor descriptor;
+
+            if (!requiredBuffers.getDescriptor(i, descriptor))
+            {
+                continue;
+            }
+
+            MString line = "  stream: ";
+            line += descriptor.name();
+            line += " semantic ";
+            line += descriptor.semanticName();
+            line += " dimension ";
+            line += descriptor.dimension();
+
+            MGlobal::displayInfo(line);
+        }
+    }
 }
 
 void GaussianSplattingSubSceneOverride::releaseShader()
@@ -498,8 +524,7 @@ void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
     m_camera.commit(camera);
 }
 
-void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce(
-    const GS::CameraState& camera)
+void GaussianSplattingSubSceneOverride::buildVertexBuffers()
 {
     const std::vector<GS::GaussianSplat>& splatList = splats();
 
@@ -512,18 +537,11 @@ void GaussianSplattingSubSceneOverride::buildStaticVertexBuffersOnce(
     m_sorter.clear();
     m_sorter.reserve(splatList.size());
 
-    const GS::CameraState localCamera = objectSpaceCamera(camera);
-
-    SplatProjectionBasis basis;
-    basis.right = localCamera.right;
-    basis.up = localCamera.up;
-
     for (const GS::GaussianSplat& splat : splatList)
     {
         // Culled splats produce no quad, so they cost no sorting work either.
         if (SplatCalculator::buildSplatVertices(
                 splat,
-                basis,
                 vertices,
                 m_splatSize,
                 m_boundingBox))

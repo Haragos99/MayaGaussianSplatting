@@ -94,7 +94,8 @@ private:
 
     const std::vector<GS::GaussianSplat>& splats() const;
 
-    void buildStaticVertexBuffersOnce(const GS::CameraState& camera);
+    // Camera independent, so it only runs on data or splat size changes.
+    void buildVertexBuffers();
 
     void rebuildSortedIndexBufferOnly(const GS::CameraState& camera);
 

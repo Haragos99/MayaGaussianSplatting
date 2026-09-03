@@ -54,14 +54,10 @@ namespace GS
 
     struct SplatVertex
     {
-        float position[3];
+        float center[3];    // Splat center, object space. Shared by all 4 corners.
+        float covA[3];      // Sigma xx, xy, xz.
+        float covB[3];      // Sigma yy, yz, zz.
+        float corner[2];    // (+-1, +-1), the only per-vertex value.
         float color[4];
-        float uv[2];
     };
 }
-
-struct ProjectedEllipse
-{
-    MVector axisX;
-    MVector axisY;
-};

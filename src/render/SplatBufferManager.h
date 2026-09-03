@@ -20,7 +20,8 @@ namespace GS
         SplatBufferManager(const SplatBufferManager&) = delete;
         SplatBufferManager& operator=(const SplatBufferManager&) = delete;
 
-        // Uploads interleaved splat vertices into the position/color/uv streams.
+        // Uploads the camera independent splat streams. Only has to run when
+        // the splat data or the splat size changes, never on camera movement.
         bool uploadVertices(const std::vector<SplatVertex>& vertices);
 
         // Expands a back-to-front quad order into triangle indices, writing
@@ -46,9 +47,14 @@ namespace GS
         void releaseAll();
 
     private:
-        std::unique_ptr<MHWRender::MVertexBuffer> m_positionBuffer;
-        std::unique_ptr<MHWRender::MVertexBuffer> m_colorBuffer;
-        std::unique_ptr<MHWRender::MVertexBuffer> m_uvBuffer;
+        // Each stream uses a distinct semantic so Maya can bind it to the
+        // matching GaussianSplat.ogsfx attribute. NORMAL and TANGENT are used
+        // as raw float3 channels, they do not carry a normal or a tangent.
+        std::unique_ptr<MHWRender::MVertexBuffer> m_centerBuffer;   // POSITION
+        std::unique_ptr<MHWRender::MVertexBuffer> m_covABuffer;     // NORMAL
+        std::unique_ptr<MHWRender::MVertexBuffer> m_covBBuffer;     // TANGENT
+        std::unique_ptr<MHWRender::MVertexBuffer> m_cornerBuffer;   // TEXCOORD0
+        std::unique_ptr<MHWRender::MVertexBuffer> m_colorBuffer;    // COLOR0
         std::unique_ptr<MHWRender::MIndexBuffer>  m_indexBuffer;
 
         unsigned int m_vertexCount = 0;

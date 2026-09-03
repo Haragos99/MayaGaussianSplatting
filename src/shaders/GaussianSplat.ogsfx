@@ -1,13 +1,23 @@
-uniform mat4 gMVP : WorldViewProjection;
+// Object -> view. Carries the node transform and the camera, so the splat
+// covariance can be re-projected here every frame instead of on the CPU.
+uniform mat4 gWV : WorldView;
+
+// View -> clip.
+uniform mat4 gP : Projection;
 
 
 
 // Vertex shader input
+//
+// Every corner of a splat carries the same center and the same 3D covariance;
+// only inCorner differs. NORMAL and TANGENT are used as plain float3 channels.
 attribute vs_input
 {
-    vec3 inPosition : POSITION;
-    vec4 inColor    : COLOR0;
-    vec2 inUV       : TEXCOORD0;
+    vec3 inCenter : POSITION;
+    vec3 inCovA   : NORMAL;      // Sigma xx, xy, xz
+    vec3 inCovB   : TANGENT;     // Sigma yy, yz, zz
+    vec2 inCorner : TEXCOORD0;   // (+-1, +-1)
+    vec4 inColor  : COLOR0;
 };
 
 
@@ -30,15 +40,81 @@ attribute fs_out
 // Vertex shader
 GLSLShader VS
 {
+    // The quad spans this many sigma. SplatCalculator::kSigmaExtent must match.
+    const float kSigmaExtent = 3.0;
+
+    // Keeps needle thin splats from collapsing to a zero area quad.
+    const float kMinAxisRatio = 0.01;
+
     void main()
     {
-        gl_Position =
-            gMVP *
-            vec4(inPosition, 1.0);
+        vec3 viewCenter = (gWV * vec4(inCenter, 1.0)).xyz;
+
+
+
+        // Sigma' = W * Sigma * W^T        [KKLD23] Eq. 5 / [ZPBG01] EWA
+        //
+        // W is the object -> view rotation. The upper-left 2x2 of the
+        // result is the conic of the ellipse on the view plane.
+        mat3 viewRotation = mat3(gWV);
+
+        mat3 sigma = mat3(
+                inCovA.x, inCovA.y, inCovA.z,
+                inCovA.y, inCovB.x, inCovB.y,
+                inCovA.z, inCovB.y, inCovB.z
+            );
+
+        mat3 viewSigma = viewRotation * sigma * transpose(viewRotation);
+
+
+        float a = viewSigma[0][0];
+        float b = viewSigma[1][0];
+        float c = viewSigma[1][1];
+
+
+        // Closed form eigen decomposition of:
+        //     [ a  b ]
+        //     [ b  c ]
+        float middle = 0.5 * (a + c);
+
+        float discriminant = sqrt(max(middle * middle - (a * c - b * b),0.0));
+
+        float lambdaMajor = max(middle + discriminant, 1.0e-12);
+        float lambdaMinor = max(middle - discriminant, 0.0);
+
+
+        // Eigenvector of lambdaMajor.
+        vec2 axis = vec2(lambdaMajor - c, b);
+
+        float axisLength = length(axis);
+
+        axis = (axisLength > 1.0e-9) ? axis / axisLength : vec2(1.0, 0.0);
+
+
+        float sigmaMajor = sqrt(lambdaMajor);
+
+        float sigmaMinor =
+            max(
+                sqrt(lambdaMinor),
+                sigmaMajor * kMinAxisRatio
+            );
+
+
+        vec2 major = axis * (sigmaMajor * kSigmaExtent);
+
+        vec2 minor = vec2(-axis.y, axis.x) * (sigmaMinor * kSigmaExtent);
+
+
+        // The offset happens in view space, so the quad always faces the camera.
+        viewCenter.xy +=
+            inCorner.x * major +
+            inCorner.y * minor;
+
+
+        gl_Position = gP * vec4(viewCenter, 1.0);
 
         color = inColor;
-
-        uv = inUV;
+        uv = inCorner;
     }
 }
 
@@ -49,19 +125,16 @@ GLSLShader FS
 {
     void main()
     {
-
-        float r2 =
-            dot(uv, uv);
+        float r2 = dot(uv, uv);
 
         // Outside the splat.
-
         if (r2 > 1.0)
         {
             discard;
         }
 
 
-        // ------------------------------------------------------------
+
         // Gaussian.
         //
         // uv spans [-1, 1] over a quad that covers 3 sigma
@@ -69,19 +142,15 @@ GLSLShader FS
         // scaled by 3^2 to evaluate exp(-0.5 * d^2) in sigma units.
         //
         // Center:
-        //     r2 = 0        -> gaussian = 1
+        //     r2 = 0  -> gaussian = 1
         // Quad edge:
-        //     r2 = 1        -> gaussian = exp(-4.5)
-        // ------------------------------------------------------------
+        //     r2 = 1  -> gaussian = exp(-4.5)
 
-        float gaussian =
-            exp(-4.5 * r2);
+        float gaussian = exp(-4.5 * r2);
 
 
         // Apply Gaussian to the original opacity.
-        float alpha =
-            color.a *
-            gaussian;
+        float alpha = color.a * gaussian;
 
 
         // Below 1/255 the pixel cannot change the framebuffer.
@@ -92,18 +161,13 @@ GLSLShader FS
 
 
         // Final color.
-        out_color =
-            vec4(
-                color.rgb,
-                alpha
-            );
+        out_color = vec4( color.rgb, alpha);
     }
 }
 
 
 
 // Technique
-
 technique Main
 {
     pass p0
