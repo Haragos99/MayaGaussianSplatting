@@ -1,5 +1,7 @@
+#include <maya/MFnDependencyNode.h>
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MPlug.h>
 #include <maya/MViewport2Renderer.h>
 #include "gaussiansplattingnode.h"
 
@@ -8,6 +10,9 @@ MObject GaussianSplattingLocator::locatorMsgAttr;
 MObject GaussianSplattingLocator::aSplatSize;
 MObject GaussianSplattingLocator::outputAttr;
 MObject GaussianSplattingLocator::aFileName;
+MObject GaussianSplattingLocator::aGenerateMesh;
+MObject GaussianSplattingLocator::aMeshResolution;
+MObject GaussianSplattingLocator::aMeshIsoLevel;
 
 MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
 {
@@ -61,11 +66,50 @@ MStatus GaussianSplattingLocator::initialize()
 
     addAttribute(outputAttr);
 
+    aGenerateMesh = typedAttr.create(
+        "generateMesh", "gm", MFnNumericData::kBoolean, 1.0);
+    typedAttr.setStorable(true);
+    typedAttr.setKeyable(false);
+    addAttribute(aGenerateMesh);
+
+    aMeshResolution = typedAttr.create(
+        "meshResolution", "mres", MFnNumericData::kInt, 128.0);
+    typedAttr.setMin(16);
+    typedAttr.setMax(512);
+    typedAttr.setStorable(true);
+    addAttribute(aMeshResolution);
+
+    aMeshIsoLevel = typedAttr.create(
+        "meshIsoLevel", "miso", MFnNumericData::kFloat, 0.2);
+    typedAttr.setMin(0.01f);
+    typedAttr.setMax(1.0f);
+    typedAttr.setStorable(true);
+    addAttribute(aMeshIsoLevel);
+
     // Filename change -> output becomes dirty
     attributeAffects(aFileName, outputAttr);
 
 
     return MS::kSuccess;
+}
+
+
+int GaussianSplattingLocator::meshResolution() const
+{
+    return MPlug(thisMObject(), aMeshResolution).asInt();
+}
+
+
+float GaussianSplattingLocator::meshIsoLevel() const
+{
+    return MPlug(thisMObject(), aMeshIsoLevel).asFloat();
+}
+
+
+void GaussianSplattingLocator::scheduleMeshRebuild()
+{
+    const MString nodeName = MFnDependencyNode(thisMObject()).name();
+    MGlobal::executeCommandOnIdle("gsSplatToMesh -node \"" + nodeName + "\"");
 }
 
 
@@ -115,6 +159,8 @@ MStatus GaussianSplattingLocator::setDependentsDirty(
 
         // Forces the sub-scene override to run update() and rebuild its buffers.
         MHWRender::MRenderer::setGeometryDrawDirty(thisMObject(), true);
+
+        scheduleMeshRebuild();
     }
 
     return MPxLocatorNode::setDependentsDirty(plug, affectedPlugs);
