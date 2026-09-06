@@ -52,8 +52,6 @@ namespace GS::Mesh
         locator->syncSplatData();
 
         ConversionSettings settings;
-        settings.resolution = locator->meshResolution();
-        settings.isoLevel = locator->meshIsoLevel();
 
         if (argData.isFlagSet("-resolution"))
             argData.getFlagArgument("-resolution", 0, settings.resolution);

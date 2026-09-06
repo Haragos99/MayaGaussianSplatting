@@ -19,9 +19,6 @@ public:
     static MObject aSplatSize;
 	static MObject aFileName;
     static MObject outputAttr;
-    static MObject aGenerateMesh;
-    static MObject aMeshResolution;
-    static MObject aMeshIsoLevel;
     bool isBounded() const override { return true; }
 
     // Reloads the file when the path attribute changed. Returns the data version.
@@ -35,13 +32,9 @@ public:
 
     const MBoundingBox& splatBounds() const { return m_data.bounds(); }
 
-    int meshResolution() const;
-    float meshIsoLevel() const;
+
 
 private:
-    // Meshing builds DAG nodes, which is illegal from the DG or the draw pass,
-    // so the conversion is queued and runs on idle instead.
-    void scheduleMeshRebuild();
 
     GS::SplatDataSource m_data;
     bool m_fileDirty = true;
