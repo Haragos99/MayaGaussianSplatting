@@ -64,18 +64,14 @@ def maya_main_window():
 
 
 class SplatToMeshWindow(QtWidgets.QDialog):
-    """Custom Qt dialog replacing the old cmds-based window."""
 
     def __init__(self, parent=None):
         super(SplatToMeshWindow, self).__init__(parent or maya_main_window())
 
         self.setObjectName(OBJECT_NAME)
         self.setWindowTitle("Splat To Mesh")
-        # Explicit flags so the window always gets a proper title bar with a
-        # close (X) button, regardless of what Maya's own window inherits.
         self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowCloseButtonHint)
-        # Let Qt actually destroy the C++ object on close, instead of just
-        # hiding it -- this is what lets show() re-create it cleanly below.
+
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.setFixedWidth(380)
 
@@ -154,10 +150,9 @@ class SplatToMeshWindow(QtWidgets.QDialog):
         self.selected_label.setText(node.split("|")[-1] if node else "<nothing selected>")
 
     def _start_script_job(self):
-        # Parented to this dialog so Maya kills it automatically if the
-        # window is destroyed some other way; also explicitly killed below.
         self._script_job_id = cmds.scriptJob(
-            event=["SelectionChanged", self._refresh_selected_label], protected=True)
+            event=["SelectionChanged", self._refresh_selected_label], protected=True
+        )
 
     def closeEvent(self, event):
         if self._script_job_id is not None and cmds.scriptJob(exists=self._script_job_id):

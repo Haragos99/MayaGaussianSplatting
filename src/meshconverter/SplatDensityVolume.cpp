@@ -50,10 +50,13 @@ namespace GS::Mesh
 
     VoxelGrid SplatDensityVolume::build(int resolution) const
     {
+        // make sure get a fallback for the steps
         resolution = std::max(resolution, 2);
 
         if (m_splats.empty())
+        {
             return VoxelGrid();
+        }
 
         const MPoint minimum = m_bounds.min();
         const MPoint maximum = m_bounds.max();
@@ -66,7 +69,9 @@ namespace GS::Mesh
 
         const float longest = std::max({ extent[0], extent[1], extent[2] });
         if (longest <= 0.0f)
+        {
             return VoxelGrid();
+        }
 
         const float step = longest / (resolution - 1);
 
@@ -75,6 +80,7 @@ namespace GS::Mesh
             static_cast<float>(minimum.y) - kBorderCells * step,
             static_cast<float>(minimum.z) - kBorderCells * step);
 
+        // for the grid size calculation
         const auto samplesAlong = [step](float length) {
             return std::max(2,
                 static_cast<int>(std::ceil(length / step)) + 1 + 2 * kBorderCells);
@@ -84,10 +90,13 @@ namespace GS::Mesh
                        samplesAlong(extent[1]),
                        samplesAlong(extent[2]),
                        origin,
-                       MFloatVector(step, step, step));
+                       MFloatVector(step, step, step)
+        );
 
         for (const GaussianSplat& splat : m_splats)
+        {
             scatter(splat, grid);
+        }
 
         return grid;
     }
@@ -95,7 +104,9 @@ namespace GS::Mesh
     void SplatDensityVolume::scatter(const GaussianSplat& splat, VoxelGrid& grid) const
     {
         if (splat.opacity <= kMinOpacity)
+        {
             return;
+        }
 
         const MFloatVector& cell = grid.cellSize();
 
@@ -109,7 +120,9 @@ namespace GS::Mesh
             std::max({ deviation[0], deviation[1], deviation[2] });
 
         if (reach > kMaxCellSpan * 0.5f * cell.x)
+        {
             return;
+        }
 
         const MFloatVector& origin = grid.origin();
         const int size[3] = { grid.sizeX(), grid.sizeY(), grid.sizeZ() };
@@ -171,13 +184,16 @@ namespace GS::Mesh
                     }
 
                     if (squaredDistance > cutoff)
+                    {
                         continue;
+                    }
 
-                    const float density =
-                        splat.opacity * std::exp(-0.5f * squaredDistance);
+                    const float density = splat.opacity * std::exp(-0.5f * squaredDistance);
 
                     if (density > grid.valueAt(x, y, z))
+                    {
                         grid.setValue(x, y, z, density);
+                    }
                 }
             }
         }

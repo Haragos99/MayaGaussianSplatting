@@ -20,12 +20,13 @@ namespace GS::Mesh
     {
         MeshData out;
         if (grid.isEmpty())
+        {
             return out;
+        }            
 
         // Cells on slice z only ever own edges on grid slices z and z+1, so two
         // slices of vertex slots are enough to weld the surface.
-        const size_t sliceSlots =
-            static_cast<size_t>(grid.sizeX()) * grid.sizeY() * 3;
+        const size_t sliceSlots = static_cast<size_t>(grid.sizeX()) * grid.sizeY() * 3;
 
         std::vector<int> cache(sliceSlots * 2, -1);
 
@@ -39,15 +40,18 @@ namespace GS::Mesh
                     for (int corner = 0; corner < 8; ++corner)
                     {
                         const int* offset = kCornerOffset[corner];
-                        const float value = grid.valueAt(
-                            x + offset[0], y + offset[1], z + offset[2]);
+                        const float value = grid.valueAt(x + offset[0], y + offset[1], z + offset[2]);
 
                         if (value < isoLevel)
+                        {
                             cubeIndex |= 1 << corner;
+                        }
                     }
 
                     if (kEdgeTable[cubeIndex] == 0)
+                    {
                         continue;
+                    }
 
                     const int* triangles = kTriangleTable[cubeIndex];
                     for (int i = 0; triangles[i] != -1; i += 3)
@@ -82,19 +86,34 @@ namespace GS::Mesh
                                   std::vector<int>& cache, MeshData& out)
     {
         const int* owner = kEdgeOwner[edge];
-        const size_t slot =
-            ((static_cast<size_t>(owner[2]) * grid.sizeY() + (y + owner[1]))
-             * grid.sizeX() + (x + owner[0])) * 3 + owner[3];
+        const int ownerX = x + owner[0];
+        const int ownerY = y + owner[1]; 
+        const int ownerZ = owner[2];
+        const int edgeSlot = owner[3];
+        const size_t cellIndex = (static_cast<size_t>(ownerZ) * grid.sizeY() + ownerY) * grid.sizeX() + ownerX;
 
+        // Each cell has 3 edge slots, so multiply by 3.
+        // Then select the required edge slot. 
+        const size_t slot = cellIndex * 3 + edgeSlot;
+
+
+        // alredy have vaild value return of the cache
         if (cache[slot] >= 0)
+        {
             return cache[slot];
+        }
 
         const int* corners = kEdgeCorners[edge];
         const int* offsetA = kCornerOffset[corners[0]];
         const int* offsetB = kCornerOffset[corners[1]];
 
-        const int ax = x + offsetA[0], ay = y + offsetA[1], az = z + offsetA[2];
-        const int bx = x + offsetB[0], by = y + offsetB[1], bz = z + offsetB[2];
+        const int ax = x + offsetA[0];
+        const int ay = y + offsetA[1];
+        const int az = z + offsetA[2];
+
+        const int bx = x + offsetB[0];
+        const int by = y + offsetB[1];
+        const int bz = z + offsetB[2];
 
         const float valueA = grid.valueAt(ax, ay, az);
         const float valueB = grid.valueAt(bx, by, bz);
@@ -108,13 +127,17 @@ namespace GS::Mesh
         const MFloatVector positionB = grid.positionAt(bx, by, bz);
         const MFloatVector position = positionA + (positionB - positionA) * t;
 
+        // For calculation of normal vector of the surface
         const MFloatVector gradientA = grid.gradientAt(ax, ay, az);
         const MFloatVector gradientB = grid.gradientAt(bx, by, bz);
         const MFloatVector gradient = gradientA + (gradientB - gradientA) * t;
 
+        // Set Deafult normal value if the gradient almost 0
         MFloatVector normal(0.0f, 1.0f, 0.0f);
         if (gradient * gradient > kDenominatorEpsilon)
+        {
             normal = -gradient.normal();
+        }
 
         const int index = static_cast<int>(out.points.length());
         out.points.append(MFloatPoint(position.x, position.y, position.z));

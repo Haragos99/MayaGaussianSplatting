@@ -15,7 +15,8 @@ namespace GS::Mesh
         m_size[2] = std::max(sizeZ, 0);
 
         m_values.assign(
-            static_cast<size_t>(m_size[0]) * m_size[1] * m_size[2], 0.0f);
+            static_cast<size_t>(m_size[0]) * m_size[1] * m_size[2], 0.0f
+        );
     }
 
     bool VoxelGrid::isEmpty() const
