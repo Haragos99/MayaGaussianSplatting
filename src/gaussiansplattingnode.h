@@ -32,7 +32,10 @@ public:
 
     const MBoundingBox& splatBounds() const { return m_data.bounds(); }
 
+
+
 private:
+
     GS::SplatDataSource m_data;
     bool m_fileDirty = true;
 };

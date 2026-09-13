@@ -63,7 +63,15 @@ add_library(MayaGaussianSplatting SHARED
  "src/ply/PlyElementReader.h" "src/ply/PlyElementReader.cpp"
  "src/ply/SplatDecoder.h"
  "src/ply/StandardSplatDecoder.h" "src/ply/StandardSplatDecoder.cpp"
- "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp" "src/splatCalculator.h" "src/splatCalculator.cpp")
+ "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp" "src/splatCalculator.h" "src/splatCalculator.cpp"
+ "src/meshconverter/MeshData.h"
+ "src/meshconverter/VoxelGrid.h" "src/meshconverter/VoxelGrid.cpp"
+ "src/meshconverter/MarchingCubesTables.h" "src/meshconverter/MarchingCubesTables.cpp"
+ "src/meshconverter/MarchingCubes.h" "src/meshconverter/MarchingCubes.cpp"
+ "src/meshconverter/SplatDensityVolume.h" "src/meshconverter/SplatDensityVolume.cpp"
+ "src/meshconverter/MayaMeshBuilder.h" "src/meshconverter/MayaMeshBuilder.cpp"
+ "src/meshconverter/SplatMeshConverter.h" "src/meshconverter/SplatMeshConverter.cpp"
+ "src/meshconverter/SplatToMeshCommand.h" "src/meshconverter/SplatToMeshCommand.cpp")
 
 
 # Include directories

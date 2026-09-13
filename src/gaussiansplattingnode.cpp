@@ -1,5 +1,7 @@
+#include <maya/MFnDependencyNode.h>
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MPlug.h>
 #include <maya/MViewport2Renderer.h>
 #include "gaussiansplattingnode.h"
 
@@ -8,6 +10,7 @@ MObject GaussianSplattingLocator::locatorMsgAttr;
 MObject GaussianSplattingLocator::aSplatSize;
 MObject GaussianSplattingLocator::outputAttr;
 MObject GaussianSplattingLocator::aFileName;
+
 
 MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
 {
@@ -67,7 +70,6 @@ MStatus GaussianSplattingLocator::initialize()
 
     return MS::kSuccess;
 }
-
 
 unsigned int GaussianSplattingLocator::syncSplatData()
 {

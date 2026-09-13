@@ -3,6 +3,7 @@
 #include "gaussiansplattingnode.h"
 #include "gaussiansplattingdraweriverrider.h"
 #include "data.h"
+#include "meshconverter/SplatToMeshCommand.h"
 
 
 
@@ -28,6 +29,12 @@ MStatus initializePlugin(MObject obj)
         "GaussianSplattingSubSceneOverride",
         GaussianSplattingSubSceneOverride::creator);
 
+    status = plugin.registerCommand(
+        GS::Mesh::SplatToMeshCommand::kName,
+        GS::Mesh::SplatToMeshCommand::creator,
+        GS::Mesh::SplatToMeshCommand::newSyntax);
+    status.perror("registerCommand gsSplatToMesh");
+
 	return MS::kSuccess;
 }
 
@@ -35,6 +42,7 @@ MStatus initializePlugin(MObject obj)
 MStatus uninitializePlugin(MObject obj)
 {
 	MFnPlugin plugin(obj);
+    plugin.deregisterCommand(GS::Mesh::SplatToMeshCommand::kName);
     plugin.deregisterNode(GaussianSplattingLocator::id);
 
     MHWRender::MDrawRegistry::deregisterSubSceneOverrideCreator(
