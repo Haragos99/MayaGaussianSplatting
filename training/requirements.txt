@@ -1,0 +1,13 @@
+# Python 3.11 to match Maya 2026.2 (works on 3.10+).
+# Phase A (COLMAP IO, init, PLY export) needs only numpy + scipy.
+numpy>=1.24
+scipy>=1.10
+
+# Phase B+ (rasterizer / training loop). Install the CUDA build separately:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+torch>=2.1
+pillow>=10.0
+tqdm>=4.65
+
+# Tests
+pytest>=7.4
