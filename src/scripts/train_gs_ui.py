@@ -358,7 +358,7 @@ class TrainWindow(QtWidgets.QDialog):
             self.status.setText("training")
 
     def _refresh_preview(self, output):
-        path = output / "previews" / "latest.png"
+        path = output / "previews" / "current" /"current.png"
         if not path.is_file():
             return
         try:

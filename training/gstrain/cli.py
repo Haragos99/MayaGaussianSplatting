@@ -170,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--log-every", type=int, default=10)
     p_train.add_argument("--preview-every", type=int, default=500, help="0 disables previews")
     p_train.add_argument("--preview-views", type=int, default=4)
-    p_train.add_argument("--save-iterations", type=int, nargs="*", default=[7_000, 30_000])
+    p_train.add_argument("--save-iterations",type=int, nargs="*", default=[100, 500, 1_000, 7_000, 30_000],)
     p_train.add_argument("--checkpoint-every", type=int, default=0)
     p_train.add_argument("--resume", type=Path, default=None)
     p_train.add_argument("--densify-from-iter", type=int, default=500)

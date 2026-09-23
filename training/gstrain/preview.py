@@ -62,6 +62,21 @@ class PreviewWriter:
     def enabled(self) -> bool:
         return bool(self.cameras)
 
+
+    @torch.no_grad()
+    def write_current_frame(self, model, bg_color: torch.Tensor):
+        if not self.enabled:
+            return None
+        
+        folder = self.root / "current"
+        folder.mkdir(parents=True, exist_ok=True)
+
+        camera = self.cameras[0]
+        cam = camera.to(model.device, model.get_xyz.dtype)
+        out = render(cam, model, bg_color)
+        rendered = to_image(out.image)
+        rendered.save(folder / "current.png")
+
     @torch.no_grad()
     def write(self, model, iteration: int, bg_color: torch.Tensor, extra: dict | None = None) -> Path | None:
         if not self.enabled:

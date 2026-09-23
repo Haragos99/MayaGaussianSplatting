@@ -256,6 +256,9 @@ def train(cfg: TrainConfig) -> Path:
                         refresh=False,
                     )
 
+            # Save the actual iterion of the model as a .png
+            preview.write_current_frame(model, bg)
+
             if bar is not None:
                 bar.update(1)
 
