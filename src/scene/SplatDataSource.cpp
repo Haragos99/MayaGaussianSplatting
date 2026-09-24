@@ -7,12 +7,13 @@
 #include <utility>
 
 #include "../gaussianSplatPlyLoader.h"
+#include "ProjectPaths.h"
 
 namespace
 {
     // Used only when the node has no usable file yet.
     const MString kBackupFilePath(
-        "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\models\\Tree.ply");
+        MString(GS_MODELS_DIR) + "/" + GS_BACKUP_MODEL_NAME);
 
     const MString kProceduralSourceName("<procedural backup>");
 }

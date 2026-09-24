@@ -3,7 +3,7 @@ import os
 
 
 # Path to your plugin (.mll)
-plugin_path = r"C:\Users\Geri\Documents\Projects\CG\MayaGaussianSplatting\out\build\x64-Release\MayaGaussianSplatting.mll"
+plugin_path = r"@GS_PLUGIN_PATH@"
 
 
 # Load plugin

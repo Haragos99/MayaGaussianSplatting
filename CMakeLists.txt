@@ -5,6 +5,25 @@ project(MayaGaussianSplatting)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Generate paths that are specific to this build tree.
+set(GS_PROJECT_DIR "${CMAKE_SOURCE_DIR}")
+set(GS_SOURCE_SHADER_DIR "${CMAKE_SOURCE_DIR}/src/shaders")
+set(GS_BUILD_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+set(GS_MODELS_DIR "${CMAKE_SOURCE_DIR}/models")
+set(GS_PLUGIN_PATH "${CMAKE_CURRENT_BINARY_DIR}/MayaGaussianSplatting.mll")
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/ProjectPaths.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/ProjectPaths.h"
+    @ONLY
+)
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/scripts/load.py"
+    "${CMAKE_CURRENT_BINARY_DIR}/scripts/load.py"
+    @ONLY
+)
+
 # Maya is built with /MD
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
@@ -77,6 +96,14 @@ add_library(MayaGaussianSplatting SHARED
 # Include directories
 target_include_directories(MayaGaussianSplatting PRIVATE
     "${MAYA_SDK_ROOT}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
+
+add_custom_command(TARGET MayaGaussianSplatting POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${GS_BUILD_SHADER_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${GS_SOURCE_SHADER_DIR}/GaussianSplat.ogsfx"
+        "${GS_BUILD_SHADER_DIR}/GaussianSplat.ogsfx"
 )
 
 # Compiler definitions required by Maya

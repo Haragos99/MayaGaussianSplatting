@@ -8,6 +8,7 @@
 #include "gaussianSplatPlyLoader.h"
 #include <maya/MQuaternion.h>
 #include "splatCalculator.h"
+#include "ProjectPaths.h"
 
 const MString GaussianSplattingSubSceneOverride::kRenderItemName("gaussianSplatRenderItem");
 
@@ -341,14 +342,16 @@ void GaussianSplattingSubSceneOverride::createShader()
 
     MStringArray techniques;
 
-     
-        shaderManager->getEffectsTechniques(
-            "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\src\\shaders\\GaussianSplat.ogsfx",
-            techniques,
-            nullptr,
-            0,
-            false
-        );
+    const MString shaderPath =
+        MString(GS_BUILD_SHADER_DIR) + "/" + GS_SHADER_FILE_NAME;
+
+    shaderManager->getEffectsTechniques(
+        shaderPath,
+        techniques,
+        nullptr,
+        0,
+        false
+    );
 
 
         if (techniques.length() == 0)
@@ -389,7 +392,7 @@ void GaussianSplattingSubSceneOverride::createShader()
 
         m_splatShader =
             shaderManager->getEffectsFileShader(
-                "C:\\Users\\Geri\\Documents\\Projects\\CG\\MayaGaussianSplatting\\src\\shaders\\GaussianSplat.ogsfx",
+                shaderPath,
                 "Main",
                 nullptr,
                 0,
