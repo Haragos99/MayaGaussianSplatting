@@ -1,0 +1,10 @@
+# Python 3.11 to match Maya 2026.2 (works on 3.10+).
+numpy>=1.24
+scipy>=1.10
+
+torch>=2.1
+pillow>=10.0
+tqdm>=4.65
+
+# Tests
+pytest>=7.4
