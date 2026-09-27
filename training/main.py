@@ -1,7 +1,7 @@
 import numpy as np
 from .gstrain.cameras import create_training_cameras
 from .gstrain.colmap import load_colmap
-from .gstrain.utility import project_points, plot_points3D
+from .gstrain.utility import project_points, plot_points3D, plot_scene, plot_projection
 
 
 if __name__ == "__main__": 
@@ -16,7 +16,8 @@ if __name__ == "__main__":
 
     print(len(pixels))
 
-
-    plot_points3D(colmapData.points3D)
+    #plot_points3D(colmapData.points3D)
+    #plot_scene(colmapData.points3D,training_cameras)
+    plot_projection(train_camera, colmapData.points3D)
 
 

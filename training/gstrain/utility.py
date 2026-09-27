@@ -35,6 +35,7 @@ def project_points(camera: TrainingCamera, points: Points3D):
     return pixels, Z
 
 
+# Plots -----------------------------------------
 
 def plot_points3D(points: Points3D):
     xyz = points.xyz
@@ -58,3 +59,82 @@ def plot_points3D(points: Points3D):
     ax.set_title("COLMAP 3D Point Cloud")
 
     return  plt.show()
+
+
+def plot_scene(points: Points3D, cameras: dict[int, TrainingCamera]):
+    xyz = points.xyz
+    rgb = points.rgb / 255.0
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # 3D points
+    ax.scatter(
+        xyz[:, 0],
+        xyz[:, 1],
+        xyz[:, 2],
+        c=rgb,
+        s=1,
+    )
+
+    # Camera centers
+    centers = np.array([
+        camera.C
+        for camera in cameras.values()
+    ])
+
+    ax.scatter(
+        centers[:, 0],
+        centers[:, 1],
+        centers[:, 2],
+        marker="^",
+        s=30,
+        label="Cameras",
+    )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    ax.set_title("COLMAP Scene")
+    ax.legend()
+
+    plt.show()
+
+
+def plot_projection(camera: TrainingCamera, points: Points3D):
+    pixels, depth = project_points(camera, points)
+
+    print(np.shape(pixels))
+
+    # Check 3D points are actually visible inside the camera's image
+    in_front = depth > 0
+
+    u = pixels[:, 0]
+    v = pixels[:, 1]
+
+    inside_width = (u >= 0) & (u < camera.width)
+    inside_height = (v >= 0) & (v < camera.height)
+
+    valid = (
+        in_front
+        & inside_width
+        & inside_height
+    )
+
+    plt.figure(figsize=(10, 8))
+
+    plt.scatter(
+        pixels[valid, 0],
+        pixels[valid, 1],
+        s=1,
+    )
+
+    plt.xlim(0, camera.width)
+    plt.ylim(camera.height, 0)
+
+    plt.xlabel("u")
+    plt.ylabel("v")
+    plt.title(f"Projected COLMAP points: {camera.name}")
+
+    plt.show()
