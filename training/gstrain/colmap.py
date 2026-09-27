@@ -78,7 +78,7 @@ class Points3D:
 class ColmapData:
     cameras: dict[int, Camera]
     images: dict[int, Image]
-    points3D: dict[int, Points3D]
+    points3D: Points3D
     path: Path
 
 
