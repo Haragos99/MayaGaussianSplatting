@@ -5,6 +5,7 @@ scipy>=1.10
 torch>=2.1
 pillow>=10.0
 tqdm>=4.65
+matplotlib>=3.7
 
 # Tests
 pytest>=7.4
