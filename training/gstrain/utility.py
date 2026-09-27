@@ -138,3 +138,19 @@ def plot_projection(camera: TrainingCamera, points: Points3D):
     plt.title(f"Projected COLMAP points: {camera.name}")
 
     plt.show()
+
+
+
+
+
+def show_rendered_image(image: np.ndarray) -> None:
+
+    plt.figure(figsize=(12, 8))
+
+    plt.imshow(image)
+
+    plt.axis("off")
+
+    plt.title("Gaussian Render")
+
+    plt.show()
