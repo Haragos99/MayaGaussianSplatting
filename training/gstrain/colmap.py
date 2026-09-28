@@ -187,15 +187,7 @@ def read_images_txt(path)->dict[int, Image]:
                 xys = np.empty((0, 2), dtype=np.float64)
                 point3D_ids = np.empty((0,),dtype=np.int64)
 
-            images[image_id] = Image(
-                id=image_id,
-                qvec=qvec,
-                tvec=tvec,
-                camera_id=camera_id,
-                name=name,
-                xys=xys,
-                point3D_ids=point3D_ids
-            )
+            images[image_id] = Image(id=image_id, qvec=qvec, tvec=tvec, camera_id=camera_id,name=name)
 
     return images
 

@@ -34,7 +34,13 @@ def create_training_camera(camera: Camera, image: Image) -> TrainingCamera:
         fy = f
     elif camera.model == "SIMPLE_RADIAL":
         f, cx, cy, k = camera.params
+        fx = f
+        fy = f
+    elif camera.model == "OPENCV":
+        fx, fy, cx, cy, k1, k2, p1, p2 = camera.params
 
+    elif camera.model == "RADIAL":
+        f, cx, cy, k1, k2 = camera.params
         fx = f
         fy = f
 
