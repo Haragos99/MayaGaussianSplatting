@@ -31,6 +31,21 @@ if __name__ == "__main__":
     print(gpu_model.opacity[:5])        # 0.5 recovered through sigmoid
     print(gpu_model.scale_raw[:2])      # log-space values Adam will optimize
 
+
+
+
+    q = np.random.default_rng(0).normal(size=(200_000, 4)).astype(np.float32)
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+
+    t = time.perf_counter()
+    np.stack([quaternion_to_rotmatrix(qi) for qi in q])
+    print("numpy loop:", time.perf_counter() - t)
+
+    qg = torch.from_numpy(q).cuda()
+    quaternion_to_rotation_matrix(qg); torch.cuda.synchronize()   # warm-up
+    t = time.perf_counter()
+    R = quaternion_to_rotation_matrix(qg); torch.cuda.synchronize()
+    print("torch cuda:", time.perf_counter() - t)
     print(len(pixels))
 
     #plot_points3D(colmapData.points3D)
