@@ -1,7 +1,7 @@
 import numpy as np
 
-from training.gstrain.colmap import quaternion_to_rotmatrix
-from training.gstrain.dataset import ProjectedGaussian
+from ..colmap import quaternion_to_rotmatrix
+from ..dataset import ProjectedGaussian
 from ..model import GaussianModel
 from ..cameras import TrainingCamera
 
