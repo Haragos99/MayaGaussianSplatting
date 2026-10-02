@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "PlyTypes.h"
-#include "../data.h"
+#include "../Data.h"
 
 namespace GS::Ply
 {

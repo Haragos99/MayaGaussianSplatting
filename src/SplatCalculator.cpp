@@ -1,4 +1,4 @@
-#include "splatCalculator.h"
+#include "SplatCalculator.h"
 
 #include <algorithm>
 #include <cmath>

@@ -15,9 +15,9 @@
 #include <maya/MFnCamera.h>
 #include <maya/M3dView.h>
 #include <maya/MDagPath.h>
-#include "data.h"
+#include "Data.h"
 #include <chrono>
-#include "gaussiansplattingnode.h"
+#include "GaussianSplattingNode.h"
 #include "render/SplatBufferManager.h"
 #include "render/SplatDepthSorter.h"
 #include "render/ViewportCamera.h"

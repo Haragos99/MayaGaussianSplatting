@@ -1,13 +1,13 @@
-#include "gaussiansplattingdraweriverrider.h"
+#include "GaussianSplattingDrawerOverrider.h"
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnNumericAttribute.h>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include "gaussianSplatPlyLoader.h"
+#include "GaussianSplatPlyLoader.h"
 #include <maya/MQuaternion.h>
-#include "splatCalculator.h"
+#include "SplatCalculator.h"
 #include "ProjectPaths.h"
 
 const MString GaussianSplattingSubSceneOverride::kRenderItemName("gaussianSplatRenderItem");

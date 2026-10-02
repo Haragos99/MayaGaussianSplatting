@@ -67,12 +67,12 @@ message(STATUS "Using Maya SDK: ${MAYA_SDK_ROOT}")
 # Plugin target
 
 add_library(MayaGaussianSplatting SHARED
-    src/main.cpp
- "src/gaussiansplattingnode.h" 
- "src/gaussiansplattingnode.cpp" 
- "src/gaussiansplattingdraweriverrider.h" 
- "src/gaussiansplattingdraweriverrider.cpp"
- "src/data.h" "src/gaussianSplatPlyLoader.h" "src/gaussianSplatPlyLoader.cpp"
+    src/Main.cpp
+ "src/GaussianSplattingNode.h"
+ "src/GaussianSplattingNode.cpp"
+ "src/GaussianSplattingDrawerOverrider.h"
+ "src/GaussianSplattingDrawerOverrider.cpp"
+ "src/Data.h" "src/GaussianSplatPlyLoader.h" "src/GaussianSplatPlyLoader.cpp"
  "src/render/SplatBufferManager.h" "src/render/SplatBufferManager.cpp"
  "src/render/SplatDepthSorter.h" "src/render/SplatDepthSorter.cpp"
  "src/render/ViewportCamera.h" "src/render/ViewportCamera.cpp"
@@ -82,7 +82,7 @@ add_library(MayaGaussianSplatting SHARED
  "src/ply/PlyElementReader.h" "src/ply/PlyElementReader.cpp"
  "src/ply/SplatDecoder.h"
  "src/ply/StandardSplatDecoder.h" "src/ply/StandardSplatDecoder.cpp"
- "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp" "src/splatCalculator.h" "src/splatCalculator.cpp"
+ "src/ply/SuperSplatDecoder.h" "src/ply/SuperSplatDecoder.cpp" "src/SplatCalculator.h" "src/SplatCalculator.cpp"
  "src/meshconverter/MeshData.h"
  "src/meshconverter/VoxelGrid.h" "src/meshconverter/VoxelGrid.cpp"
  "src/meshconverter/MarchingCubesTables.h" "src/meshconverter/MarchingCubesTables.cpp"

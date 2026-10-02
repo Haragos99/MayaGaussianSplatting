@@ -1,5 +1,5 @@
 #pragma once
-#include "data.h"
+#include "Data.h"
 
 
 class GaussianSplatPlyLoader

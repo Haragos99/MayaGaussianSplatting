@@ -1,8 +1,8 @@
 #include <maya/MFnPlugin.h>
 #include <maya/MDrawRegistry.h>
-#include "gaussiansplattingnode.h"
-#include "gaussiansplattingdraweriverrider.h"
-#include "data.h"
+#include "GaussianSplattingNode.h"
+#include "GaussianSplattingDrawerOverrider.h"
+#include "Data.h"
 #include "meshconverter/SplatToMeshCommand.h"
 
 

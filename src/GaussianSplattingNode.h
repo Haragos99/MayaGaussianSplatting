@@ -1,6 +1,6 @@
 #pragma once
 #include <maya/MPxLocatorNode.h>
-#include "data.h"
+#include "Data.h"
 #include <maya/MGlobal.h>
 #include "scene/SplatDataSource.h"
 

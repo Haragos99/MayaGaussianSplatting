@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "data.h"
+#include "Data.h"
 
 // Symmetric 3D covariance, upper triangle only.
 // Sigma = R * S * S^T * R^T, [KKLD23] Eq. 6. Camera independent.

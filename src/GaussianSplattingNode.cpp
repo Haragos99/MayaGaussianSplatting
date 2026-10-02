@@ -3,7 +3,7 @@
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MPlug.h>
 #include <maya/MViewport2Renderer.h>
-#include "gaussiansplattingnode.h"
+#include "GaussianSplattingNode.h"
 
 MTypeId GaussianSplattingLocator::id(0x7802aaaa);
 MObject GaussianSplattingLocator::locatorMsgAttr;

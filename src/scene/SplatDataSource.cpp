@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "../gaussianSplatPlyLoader.h"
+#include "../GaussianSplatPlyLoader.h"
 #include "ProjectPaths.h"
 
 namespace

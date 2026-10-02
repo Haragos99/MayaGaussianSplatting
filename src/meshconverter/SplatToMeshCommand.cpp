@@ -4,7 +4,7 @@
 #include <maya/MFnDependencyNode.h>
 #include <maya/MSelectionList.h>
 
-#include "../gaussiansplattingnode.h"
+#include "../GaussianSplattingNode.h"
 #include "SplatMeshConverter.h"
 
 namespace GS::Mesh
