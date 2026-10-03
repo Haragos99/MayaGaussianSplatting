@@ -10,6 +10,8 @@ MObject GaussianSplattingLocator::locatorMsgAttr;
 MObject GaussianSplattingLocator::aSplatSize;
 MObject GaussianSplattingLocator::outputAttr;
 MObject GaussianSplattingLocator::aFileName;
+MObject GaussianSplattingLocator::aEnableBoundingBox;
+MObject GaussianSplattingLocator::aEnbelSplatinfo;
 
 
 MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
@@ -34,6 +36,29 @@ MStatus GaussianSplattingLocator::initialize()
     typedAttr.setWritable(true);
     addAttribute(aSplatSize);
 
+
+
+    MFnNumericAttribute nAttr;
+
+    aEnableBoundingBox = nAttr.create(
+        "enableeBoundingBox",
+        "ef",
+        MFnNumericData::kBoolean,
+        true
+    );
+
+    nAttr.setKeyable(true);
+    nAttr.setStorable(true);
+    addAttribute(aEnableBoundingBox);
+
+
+    aEnbelSplatinfo = nAttr.create(
+        "enableInfo", "ei",
+        MFnNumericData::kBoolean, true
+    );
+    nAttr.setKeyable(true);
+    nAttr.setStorable(true);
+    addAttribute(aEnbelSplatinfo);
 
     MFnTypedAttribute tAttr;
 

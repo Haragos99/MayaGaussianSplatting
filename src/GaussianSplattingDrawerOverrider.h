@@ -42,6 +42,9 @@ public:
 
     float getSpaltSize() const;
     
+	bool isBoundingBoxActive() const;
+
+	bool isSpaltInfoActive() const;
 
     MHWRender::DrawAPI supportedDrawAPIs() const override;
 

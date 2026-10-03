@@ -63,6 +63,18 @@ float GaussianSplattingSubSceneOverride::getSpaltSize() const
     return plug.asFloat();
 }
 
+bool  GaussianSplattingSubSceneOverride::isBoundingBoxActive() const
+{
+    MPlug plug(m_nodeObj, GaussianSplattingLocator::aEnableBoundingBox);
+	return plug.asBool();
+}
+
+bool  GaussianSplattingSubSceneOverride::isSpaltInfoActive() const
+{
+    MPlug plug(m_nodeObj, GaussianSplattingLocator::aEnbelSplatinfo);
+    return plug.asBool();
+}
+
 GaussianSplattingSubSceneOverride::~GaussianSplattingSubSceneOverride()
 {
     releaseShader();
@@ -114,7 +126,7 @@ void GaussianSplattingSubSceneOverride::update(
 
 
     m_splatSize = getSpaltSize();
-	m_splatSize = std::max(0.1f, std::min(m_splatSize, 1.0f));
+	m_splatSize = std::max(0.1f, std::min(m_splatSize, 2.0f));
 
     // A new file path invalidates every cached buffer.
     if (m_locator)
@@ -200,35 +212,40 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
     const MHWRender::MFrameContext& frameContext)
 {
     drawManager.beginDrawable();
+    if (isSpaltInfoActive())
+    {
+        drawManager.setColor(MColor(1.0f, 0.8f, 0.1f, 1.0f));
 
-    drawManager.setColor(MColor(1.0f, 0.8f, 0.1f, 1.0f));
+        MString splatSizeLabel;
+        splatSizeLabel += "Gaussian splats: ";
+        splatSizeLabel += static_cast<int>(splats().size());
 
-    MString splatSizeLabel;
-    splatSizeLabel += "Gaussian splats: ";
-    splatSizeLabel += static_cast<int>(splats().size());
+        drawManager.text(
+            MPoint(0.0, 1.5, 0.0),
+            splatSizeLabel,
+            MHWRender::MUIDrawManager::kCenter);
 
-    drawManager.text(
-        MPoint(0.0, 1.5, 0.0),
-        splatSizeLabel,
-        MHWRender::MUIDrawManager::kCenter);
+        MString fpsLabel;
+        fpsLabel += "FPS: ";
+        fpsLabel += static_cast<int>(m_fps);
 
-    MString fpsLabel;
-    fpsLabel += "FPS: ";
-    fpsLabel += static_cast<int>(m_fps);
+        drawManager.text(
+            MPoint(0.0, 2.5, 0.0),
+            fpsLabel,
+            MHWRender::MUIDrawManager::kLeft);
+    }
 
-    drawManager.text(
-        MPoint(0.0, 2.5, 0.0),
-        fpsLabel,
-        MHWRender::MUIDrawManager::kLeft);
-
-    drawManager.setColor(MColor(0.2f, 0.8f, 1.0f, 1.0f));
-    drawManager.box(
-        m_boundingBox.center(),
-        MVector(1.0, 0.0, 0.0),
-        MVector(0.0, 1.0, 0.0),
-        m_boundingBox.width(),
-        m_boundingBox.height(),
-        m_boundingBox.depth());
+    if (isBoundingBoxActive())
+    {
+        drawManager.setColor(MColor(0.2f, 0.8f, 1.0f, 1.0f));
+        drawManager.box(
+            m_boundingBox.center(),
+            MVector(1.0, 0.0, 0.0),
+            MVector(0.0, 1.0, 0.0),
+            m_boundingBox.width(),
+            m_boundingBox.height(),
+            m_boundingBox.depth());
+    }
 
     drawManager.endDrawable();
 

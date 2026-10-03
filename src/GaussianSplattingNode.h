@@ -19,6 +19,8 @@ public:
     static MObject aSplatSize;
 	static MObject aFileName;
     static MObject outputAttr;
+	static MObject aEnableBoundingBox;
+    static MObject aEnbelSplatinfo;
     bool isBounded() const override { return true; }
 
     // Reloads the file when the path attribute changed. Returns the data version.
