@@ -1,14 +1,10 @@
-"""Batched world -> camera -> image projection (guide sections 10 and 11)."""
-
 import torch
-
 from ..geometry.camera import TorchCamera
 
 
 def world_to_camera(camera: TorchCamera, xyz: torch.Tensor) -> torch.Tensor:
     """(N, 3) world points -> (N, 3) camera points, COLMAP convention X_c = R X_w + t."""
     return xyz @ camera.R.transpose(-1, -2) + camera.t
-
 
 def project_points_Torch(
     camera: TorchCamera,
