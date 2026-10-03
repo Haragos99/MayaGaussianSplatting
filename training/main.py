@@ -18,6 +18,7 @@ from gstrain.render.renderer_torch import render_gaussians
 from .gstrain.cameras import create_training_cameras
 from .gstrain.colmap import Points3D, load_colmap
 from .gstrain.dataset import load_target_image
+from .gstrain.export_ply import write_ply
 from .gstrain.geometry.camera import TorchCamera
 from .gstrain.model import initialize_gaussians
 from .gstrain.model_torch import TorchGaussianModel
@@ -36,6 +37,7 @@ def run_training_test(
     max_gaussians: int = 5_000,
     output_dir: Path = Path("out/previews"),
     preview_every: int = 100,
+    ply_output: Path | None = None,
 ) -> list[float]:
     """Run a small end-to-end training pass against a COLMAP scene."""
     if iterations < 1 or max_views < 2 or max_edge < 1 or max_gaussians < 1 or preview_every < 1:
@@ -89,8 +91,14 @@ def run_training_test(
         config=TrainConfig(iterations=iterations),
         on_iteration=save_periodic_preview,
     )
+    ply_output = ply_output or output_dir.parent / "point_cloud.ply"
+    ply_path = write_ply(ply_output, model)
+    ply_size_bytes = ply_path.stat().st_size
+
     print(f"Training smoke test completed: {len(losses)} iterations, {len(model)} Gaussians")
     print(f"Loss: {losses[0]:.6f} -> {losses[-1]:.6f}")
+    print(f"Exported {len(model)} splats to: {ply_path}")
+    print(f"PLY size: {ply_size_bytes:,} bytes ({ply_size_bytes / (1024 ** 2):.2f} MiB)")
     return losses
 
 
@@ -220,6 +228,7 @@ def main() -> None:
     parser.add_argument("--max-gaussians", type=int, default=5_000)
     parser.add_argument("--output-dir", type=Path, default=Path("out/previews"))
     parser.add_argument("--preview-every", type=int, default=100)
+    parser.add_argument("--ply-output", type=Path, help="PLY output path; defaults beside the preview directory")
     args = parser.parse_args()
 
     run_training_test(
@@ -231,6 +240,7 @@ def main() -> None:
         max_gaussians=args.max_gaussians,
         output_dir=args.output_dir,
         preview_every=args.preview_every,
+        ply_output=args.ply_output,
     )
 
 
