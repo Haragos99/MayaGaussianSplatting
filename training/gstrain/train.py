@@ -1,6 +1,7 @@
 import math
 import random
 from dataclasses import dataclass
+from typing import Callable
 
 import torch
 from tqdm.auto import tqdm
@@ -138,6 +139,7 @@ def train(
     views: list[TrainView],
     config: TrainConfig | None = None,
     extent: float | None = None,
+    on_iteration: Callable[[int, float], None] | None = None,
 ) -> list[float]:
     config = config or TrainConfig()
     extent = scene_extent(views) if extent is None else extent
@@ -156,5 +158,7 @@ def train(
         loss = train_step(model, rng.choice(views), optimizer, config)
         history.append(loss)
         progress.set_postfix(loss=f"{loss:.4f}")
+        if on_iteration is not None:
+            on_iteration(step, loss)
 
     return history

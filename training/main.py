@@ -21,6 +21,7 @@ from .gstrain.dataset import load_target_image
 from .gstrain.geometry.camera import TorchCamera
 from .gstrain.model import initialize_gaussians
 from .gstrain.model_torch import TorchGaussianModel
+from .gstrain.preview import save_progress_preview
 from .gstrain.torch_utils import choose_device, describe_device
 from .gstrain.train import TrainConfig, TrainView, train
 import time
@@ -33,11 +34,13 @@ def run_training_test(
     max_views: int = 3,
     max_edge: int = 256,
     max_gaussians: int = 5_000,
+    output_dir: Path = Path("out/previews"),
+    preview_every: int = 100,
 ) -> list[float]:
     """Run a small end-to-end training pass against a COLMAP scene."""
-    if iterations < 1 or max_views < 2 or max_edge < 1 or max_gaussians < 1:
+    if iterations < 1 or max_views < 2 or max_edge < 1 or max_gaussians < 1 or preview_every < 1:
         raise ValueError(
-            "iterations, max_edge, and max_gaussians must be positive; "
+            "iterations, max_edge, max_gaussians, and preview_every must be positive; "
             "max_views must be at least 2"
         )
 
@@ -72,7 +75,20 @@ def run_training_test(
     if len(views) < 2:
         raise ValueError("training needs at least two COLMAP images")
 
-    losses = train(model, views, config=TrainConfig(iterations=iterations))
+    def save_periodic_preview(step: int, _loss: float) -> None:
+        completed_iterations = step + 1
+        if completed_iterations % preview_every == 0:
+            preview_path = save_progress_preview(
+                model, views[0], output_dir, completed_iterations
+            )
+            print(f"\nSaved preview: {preview_path}")
+
+    losses = train(
+        model,
+        views,
+        config=TrainConfig(iterations=iterations),
+        on_iteration=save_periodic_preview,
+    )
     print(f"Training smoke test completed: {len(losses)} iterations, {len(model)} Gaussians")
     print(f"Loss: {losses[0]:.6f} -> {losses[-1]:.6f}")
     return losses
@@ -198,10 +214,12 @@ def main() -> None:
         type=Path,
         help="image directory; defaults to the COLMAP project's images folder",
     )
-    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--iterations", type=int, default=1000)
     parser.add_argument("--max-views", type=int, default=3)
     parser.add_argument("--max-edge", type=int, default=256)
     parser.add_argument("--max-gaussians", type=int, default=5_000)
+    parser.add_argument("--output-dir", type=Path, default=Path("out/previews"))
+    parser.add_argument("--preview-every", type=int, default=100)
     args = parser.parse_args()
 
     run_training_test(
@@ -211,6 +229,8 @@ def main() -> None:
         max_views=args.max_views,
         max_edge=args.max_edge,
         max_gaussians=args.max_gaussians,
+        output_dir=args.output_dir,
+        preview_every=args.preview_every,
     )
 
 
