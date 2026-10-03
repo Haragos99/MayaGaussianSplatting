@@ -26,6 +26,8 @@ def rasterize_tiles(
         return image.view(height, width, 3)
 
     offset = torch.arange(tile_size, device=device)
+    shaded_index: list[torch.Tensor] = []
+    shaded_rgb: list[torch.Tensor] = []
 
     for first in range(0, bins.num_tiles, tile_chunk):
         tile_index = torch.arange(first, min(first + tile_chunk, bins.num_tiles), device=device)
@@ -90,7 +92,15 @@ def rasterize_tiles(
         inside = (pixel_x < width) & (pixel_y < height)
         flat = (pixel_y * width + pixel_x).clamp_max(height * width - 1)
 
-        image = image.index_add(0, flat[inside], rgb[inside])
+        shaded_index.append(flat[inside])
+        shaded_rgb.append(rgb[inside])
+
+    if not shaded_index:
+        return image.view(height, width, 3)
+
+    # Scattering once keeps a single full-size image in the autograd graph;
+    # accumulating per chunk would retain one copy per chunk instead.
+    image = image.index_add(0, torch.cat(shaded_index), torch.cat(shaded_rgb))
 
     return image.view(height, width, 3)
 

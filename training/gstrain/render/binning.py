@@ -26,12 +26,23 @@ def tile_grid(width: int, height: int, tile_size: int) -> tuple[int, int]:
     return math.ceil(width / tile_size), math.ceil(height / tile_size)
 
 
-def screen_radius(cov2d: torch.Tensor, sigma_factor: float = 3.0) -> torch.Tensor:
+def screen_radius(
+    cov2d: torch.Tensor,
+    sigma_factor: float = 3.0,
+    max_radius: float | None = None,
+) -> torch.Tensor:
     """(N, 2, 2) -> (N, 2) axis-aligned 3-sigma pixel radii."""
     rx = cov2d[..., 0, 0].clamp_min(1e-8).sqrt()
     ry = cov2d[..., 1, 1].clamp_min(1e-8).sqrt()
 
-    return sigma_factor * torch.stack([rx, ry], dim=-1)
+    radius = sigma_factor * torch.stack([rx, ry], dim=-1)
+
+    # A Gaussian near the camera can project to millions of pixels and alone
+    # generate more (tile, gaussian) pairs than the rest of the scene.
+    if max_radius is not None:
+        radius = radius.clamp_max(max_radius)
+
+    return radius
 
 
 def tile_ranges(
@@ -69,11 +80,13 @@ def build_tile_bins(
     height: int,
     tile_size: int = 16,
     sigma_factor: float = 3.0,
+    max_radius: float | None = None,
 ) -> TileBins:
     device = uv.device
     grid_x, grid_y = tile_grid(width, height, tile_size)
 
-    box, touches = tile_ranges(uv, screen_radius(cov2d, sigma_factor), width, height, tile_size)
+    radius = screen_radius(cov2d, sigma_factor, max_radius=max_radius)
+    box, touches = tile_ranges(uv, radius, width, height, tile_size)
     keep = visible & touches
 
     x0, x1, y0, y1 = box.unbind(dim=-1)

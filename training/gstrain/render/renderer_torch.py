@@ -38,6 +38,7 @@ def project_gaussians(
     near: float = 0.01,
     epsilon: float = 1e-6,
     sigma_factor: float = 3.0,
+    max_radius: float | None = None,
 ) -> ProjectedGaussians:
     points_camera = world_to_camera(camera, gaussians.xyz)
     mean, depth, visible = project_points_Torch(camera, points_camera, near=near)
@@ -50,7 +51,7 @@ def project_gaussians(
         mean=mean,
         cov2d=cov2d,
         conic=conic,
-        radius=screen_radius(cov2d, sigma_factor),
+        radius=screen_radius(cov2d, sigma_factor, max_radius=max_radius),
         color=gaussians.color,
         opacity=gaussians.opacity,
         depth=depth,
@@ -67,11 +68,18 @@ def render_gaussians(
     epsilon: float = 1e-6,
     sigma_factor: float = 3.0,
     max_per_tile: int | None = None,
+    max_radius: float | None = None,
     alpha_max: float = 0.999,
 ) -> torch.Tensor:
     """-> (H, W, 3) image on the camera's device."""
+    # A footprint wider than the image already covers every tile, so capping
+    # here bounds the pair count without changing what is drawn.
+    if max_radius is None:
+        max_radius = float(max(camera.width, camera.height))
+
     projected = project_gaussians(
-        camera, gaussians, near=near, epsilon=epsilon, sigma_factor=sigma_factor
+        camera, gaussians, near=near, epsilon=epsilon, sigma_factor=sigma_factor,
+        max_radius=max_radius,
     )
 
     bins = build_tile_bins(
@@ -83,6 +91,7 @@ def render_gaussians(
         camera.height,
         tile_size=tile_size,
         sigma_factor=sigma_factor,
+        max_radius=max_radius,
     )
 
     image = rasterize_tiles(
