@@ -1,5 +1,7 @@
-import numpy as np, torch
-from .gstrain.cameras import create_training_cameras
+import argparse
+from pathlib import Path
+
+import numpy as np
 from .gstrain.colmap import load_colmap
 from .gstrain.utility import project_points, show_rendered_image, plot_points3D, plot_scene, plot_projection
 from .gstrain.model import initialize_gaussians
@@ -13,16 +15,70 @@ from gstrain.geometry.camera import TorchCamera
 from gstrain.render.projection import project_points_Torch, world_to_camera
 from gstrain.render.binning import build_tile_bins
 from gstrain.render.renderer_torch import render_gaussians
+from .gstrain.cameras import create_training_cameras
+from .gstrain.colmap import Points3D, load_colmap
+from .gstrain.dataset import load_target_image
+from .gstrain.geometry.camera import TorchCamera
+from .gstrain.model import initialize_gaussians
+from .gstrain.model_torch import TorchGaussianModel
+from .gstrain.torch_utils import choose_device, describe_device
+from .gstrain.train import TrainConfig, TrainView, train
 import time
-print(describe_device())
+import torch
+
+def run_training_test(
+    colmap_dir: Path,
+    images_dir: Path | None = None,
+    iterations: int = 3,
+    max_views: int = 3,
+    max_edge: int = 256,
+    max_gaussians: int = 5_000,
+) -> list[float]:
+    """Run a small end-to-end training pass against a COLMAP scene."""
+    if iterations < 1 or max_views < 2 or max_edge < 1 or max_gaussians < 1:
+        raise ValueError(
+            "iterations, max_edge, and max_gaussians must be positive; "
+            "max_views must be at least 2"
+        )
+
+    data = load_colmap(colmap_dir)
+    images_dir = images_dir or data.path.parent.parent / "images"
+    if not images_dir.is_dir():
+        raise FileNotFoundError(f"image directory does not exist: {images_dir}")
+    if len(data.points3D.xyz) == 0:
+        raise ValueError("COLMAP scene contains no 3D points to initialize Gaussians")
+
+    device = choose_device()
+    point_count = len(data.points3D.xyz)
+    if point_count > max_gaussians:
+        indices = np.linspace(0, point_count - 1, max_gaussians, dtype=np.int64)
+        points = Points3D(
+            ids=data.points3D.ids[indices],
+            xyz=data.points3D.xyz[indices],
+            rgb=data.points3D.rgb[indices],
+            error=data.points3D.error[indices],
+        )
+    else:
+        points = data.points3D
+
+    model = TorchGaussianModel.from_numpy(initialize_gaussians(points), device=device)
+    camera_data = create_training_cameras(data)
+    views = []
+    for image_id, image in list(data.images.items())[:max_views]:
+        camera = TorchCamera.from_training_camera(camera_data[image_id], device=device).downscaled(max_edge)
+        target = load_target_image(images_dir, image.name, camera.width, camera.height, device=device)
+        views.append(TrainView(camera=camera, image=target))
+
+    if len(views) < 2:
+        raise ValueError("training needs at least two COLMAP images")
+
+    losses = train(model, views, config=TrainConfig(iterations=iterations))
+    print(f"Training smoke test completed: {len(losses)} iterations, {len(model)} Gaussians")
+    print(f"Loss: {losses[0]:.6f} -> {losses[-1]:.6f}")
+    return losses
 
 
-
-
-
-
-
-if __name__ == "__main__": 
+def main() -> None:
     print(describe_device())
     colmapData = load_colmap(r"C:\Users\Geri\Documents\Projects\CG\MeSP\sparse\0")
 
@@ -127,3 +183,36 @@ if __name__ == "__main__":
     #show_rendered_image(rendered)
 
 
+
+    # Test Training
+    parser = argparse.ArgumentParser(description="Run a short Gaussian-splat training smoke test.")
+    parser.add_argument(
+        "colmap_dir",
+        nargs="?",
+        type=Path,
+        default=Path(r"C:\Users\Geri\Documents\Projects\CG\MeSP\sparse\0"),
+        help="COLMAP model directory (or project root)",
+    )
+    parser.add_argument(
+        "--images-dir",
+        type=Path,
+        help="image directory; defaults to the COLMAP project's images folder",
+    )
+    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--max-views", type=int, default=3)
+    parser.add_argument("--max-edge", type=int, default=256)
+    parser.add_argument("--max-gaussians", type=int, default=5_000)
+    args = parser.parse_args()
+
+    run_training_test(
+        args.colmap_dir,
+        images_dir=args.images_dir,
+        iterations=args.iterations,
+        max_views=args.max_views,
+        max_edge=args.max_edge,
+        max_gaussians=args.max_gaussians,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -31,6 +31,11 @@ class TorchCamera:
     def device(self) -> torch.device:
         return self.R.device
 
+    @property
+    def camera_center(self) -> torch.Tensor:
+        """(3,) camera position in world space, from X_c = R X_w + t."""
+        return -self.R.transpose(-1, -2) @ self.t
+
     def rescaled(self, width: int, height: int) -> "TorchCamera":
         """Same view, different pixel grid.
 
