@@ -9,12 +9,9 @@ from .geometry.camera import TorchCamera
 from .loss import photometric_loss
 from .model_torch import TorchGaussianModel
 from .render.renderer_torch import render_gaussians
+from .dataset import TrainView
 
-"Store the data of the camera and tatget img "
-@dataclass
-class TrainView:
-    camera: TorchCamera
-    image: torch.Tensor  # (H, W, 3) in [0, 1]
+
 
 
 @dataclass
