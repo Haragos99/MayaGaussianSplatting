@@ -1,5 +1,4 @@
 import math
-import random
 from dataclasses import dataclass
 from typing import Callable
 
@@ -119,19 +118,24 @@ def render_view(
 
 def train_step(
     model: TorchGaussianModel,
-    view: TrainView,
+    views:  list[TrainView],
     optimizer: torch.optim.Adam,
     config: TrainConfig,
 ) -> float:
     optimizer.zero_grad(set_to_none=True)
+    mean_loss = 0.0
 
-    target = view.image.to(model.device, non_blocking=True)
-    loss = photometric_loss(render_view(model, view, config), target, config.lambda_dssim)
+    for current_view in views:
+        target = current_view.image.to(model.device, non_blocking=True)
+        loss = photometric_loss(
+            render_view(model, current_view, config), target, config.lambda_dssim
+        )
+        (loss / len(views)).backward()
+        mean_loss += loss.detach() / len(views)
 
-    loss.backward()
     optimizer.step()
 
-    return float(loss.detach())
+    return float(mean_loss)
 
 
 def train(
@@ -142,10 +146,11 @@ def train(
     on_iteration: Callable[[int, float], None] | None = None,
 ) -> list[float]:
     config = config or TrainConfig()
+    if not views:
+        raise ValueError("training requires at least one view")
     extent = scene_extent(views) if extent is None else extent
 
     optimizer = create_optimizer(model, config, extent)
-    rng = random.Random(config.seed)
 
     #store the loss of the training
     history: list[float] = []
@@ -155,7 +160,7 @@ def train(
     for step in progress:
         update_position_lr(optimizer, config, extent, step)
 
-        loss = train_step(model, rng.choice(views), optimizer, config)
+        loss = train_step(model, views, optimizer, config)
         history.append(loss)
         progress.set_postfix(loss=f"{loss:.4f}")
         if on_iteration is not None:

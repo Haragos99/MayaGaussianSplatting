@@ -32,7 +32,7 @@ def run_training_test(
     colmap_dir: Path,
     images_dir: Path | None = None,
     iterations: int = 3,
-    max_views: int = 3,
+    max_views: int | None = None,
     max_edge: int = 256,
     max_gaussians: int = 5_000,
     output_dir: Path = Path("out/previews"),
@@ -40,7 +40,13 @@ def run_training_test(
     ply_output: Path | None = None,
 ) -> list[float]:
     """Run a small end-to-end training pass against a COLMAP scene."""
-    if iterations < 1 or max_views < 2 or max_edge < 1 or max_gaussians < 1 or preview_every < 1:
+    if (
+        iterations < 1
+        or (max_views is not None and max_views < 2)
+        or max_edge < 1
+        or max_gaussians < 1
+        or preview_every < 1
+    ):
         raise ValueError(
             "iterations, max_edge, max_gaussians, and preview_every must be positive; "
             "max_views must be at least 2"
@@ -69,11 +75,14 @@ def run_training_test(
     model = TorchGaussianModel.from_numpy(initialize_gaussians(points), device=device)
     camera_data = create_training_cameras(data)
     views = []
-    for image_id, image in list(data.images.items())[:max_views]:
+    for image_id, image in data.images.items():
+        if max_views is not None and len(views) >= max_views:
+            break
         camera = TorchCamera.from_training_camera(camera_data[image_id], device=device).downscaled(max_edge)
         target = load_target_image(images_dir, image.name, camera.width, camera.height, device=device)
         views.append(TrainView(camera=camera, image=target))
 
+    print(f"Training views: {len(views)} / {len(data.images)}")
     if len(views) < 2:
         raise ValueError("training needs at least two COLMAP images")
 
@@ -223,7 +232,7 @@ def main() -> None:
         help="image directory; defaults to the COLMAP project's images folder",
     )
     parser.add_argument("--iterations", type=int, default=1000)
-    parser.add_argument("--max-views", type=int, default=3)
+    parser.add_argument("--max-views", type=int, help="optional cap; defaults to using every COLMAP view")
     parser.add_argument("--max-edge", type=int, default=256)
     parser.add_argument("--max-gaussians", type=int, default=5_000)
     parser.add_argument("--output-dir", type=Path, default=Path("out/previews"))
