@@ -3,8 +3,9 @@ from PIL import Image
 import numpy as np
 import torch
 from dataclasses import dataclass
-from .cameras import TrainingCamera
-from .colmap import Camera, Points3D
+from .cameras import TrainingCamera, create_training_cameras
+from .colmap import Camera, ColmapData, Points3D
+from .geometry.camera import TorchCamera
 from .model import initialize_gaussians
 from .torch_utils import choose_device
 
@@ -36,6 +37,53 @@ def load_target_image(
     pixels = np.asarray(image, dtype=np.float32) / 255.0
 
     return torch.as_tensor(pixels, device=device or choose_device())
+
+
+"Store the data of the camera and tatget img "
+@dataclass
+class TrainView:
+    """One camera and the photograph it should reproduce."""
+    camera: TorchCamera
+    image: torch.Tensor  # (H, W, 3) in [0, 1]
+
+
+def views_memory_mb(count: int, width: int, height: int) -> float:
+    return count * width * height * 3 * 4 / 1024**2
+
+
+def build_views(
+    data: ColmapData,
+    images_dir: Path,
+    max_edge: int = 800,
+    device: torch.device | None = None,
+    image_device: torch.device | None = None,
+    limit: int | None = None,
+) -> list[TrainView]:
+    """Every COLMAP image as a training view, downscaled to `max_edge`.
+
+    Targets are cached on `image_device` (the render device by default). A full
+    scene at high resolution will not fit next to the render, so pass
+    torch.device("cpu") to keep them on the host - `train_step` moves one view
+    at a time, and a pinned 2 MB copy costs far less than the render itself.
+    """
+    device = device or choose_device()
+    image_device = device if image_device is None else image_device
+    pin = image_device.type == "cpu" and device.type == "cuda"
+
+    views: list[TrainView] = []
+    training_cameras = create_training_cameras(data)
+    for image_id, training_camera in list(training_cameras.items())[:limit]:
+        camera = TorchCamera.from_training_camera(training_camera, device=device)
+        camera = camera.downscaled(max_edge)
+
+        image = load_target_image(
+            images_dir, data.images[image_id].name,
+            camera.width, camera.height, device=image_device,
+        )
+
+        views.append(TrainView(camera=camera, image=image.pin_memory() if pin else image))
+
+    return views
 
 @dataclass
 class ProjectedGaussian:

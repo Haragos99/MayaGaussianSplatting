@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 from .gstrain.colmap import load_colmap
 from .gstrain.utility import project_points, show_rendered_image, plot_points3D, plot_scene, plot_projection
 from .gstrain.model import initialize_gaussians
@@ -17,7 +18,7 @@ from gstrain.render.binning import build_tile_bins
 from gstrain.render.renderer_torch import render_gaussians
 from .gstrain.cameras import create_training_cameras
 from .gstrain.colmap import Points3D, load_colmap
-from .gstrain.dataset import load_target_image
+from .gstrain.dataset import build_views
 from .gstrain.export_ply import write_ply
 from .gstrain.geometry.camera import TorchCamera
 from .gstrain.model import initialize_gaussians
@@ -73,18 +74,26 @@ def run_training_test(
         points = data.points3D
 
     model = TorchGaussianModel.from_numpy(initialize_gaussians(points), device=device)
-    camera_data = create_training_cameras(data)
-    views = []
-    for image_id, image in data.images.items():
-        if max_views is not None and len(views) >= max_views:
-            break
-        camera = TorchCamera.from_training_camera(camera_data[image_id], device=device).downscaled(max_edge)
-        target = load_target_image(images_dir, image.name, camera.width, camera.height, device=device)
-        views.append(TrainView(camera=camera, image=target))
+    views = build_views(
+        data,
+        images_dir,
+        max_edge=max_edge,
+        device=device,
+        limit=max_views,
+    )
 
     print(f"Training views: {len(views)} / {len(data.images)}")
     if len(views) < 2:
         raise ValueError("training needs at least two COLMAP images")
+    first_image = next(iter(data.images.values()))
+    with Image.open(images_dir / first_image.name) as original_image:
+        original_width, original_height = original_image.size
+    resized_width = views[0].camera.width
+    resized_height = views[0].camera.height
+    print(
+        f"First image size: {original_width}x{original_height} -> "
+        f"{resized_width}x{resized_height}"
+    )
 
     def save_periodic_preview(step: int, _loss: float) -> None:
         completed_iterations = step + 1
