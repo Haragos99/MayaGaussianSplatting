@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass
 
 import torch
+from tqdm.auto import tqdm
 
 from .geometry.camera import TorchCamera
 from .loss import photometric_loss
@@ -148,10 +149,12 @@ def train(
     history: list[float] = []
 
     # Training Loop
-    for step in range(config.iterations):
+    progress = tqdm(range(config.iterations), desc="Training", unit="iter")
+    for step in progress:
         update_position_lr(optimizer, config, extent, step)
 
         loss = train_step(model, rng.choice(views), optimizer, config)
         history.append(loss)
+        progress.set_postfix(loss=f"{loss:.4f}")
 
     return history
