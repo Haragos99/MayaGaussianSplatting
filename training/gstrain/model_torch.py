@@ -5,6 +5,13 @@ import torch.nn as nn
 from .torch_utils import choose_device
 
 EPS = 1e-6
+PARAMETER_ATTRIBUTES = {
+    "xyz": "xyz",
+    "scale": "scale_raw",
+    "rotation": "rotation",
+    "opacity": "opacity_raw",
+    "color": "color_raw",
+}
 
 """It is a Torch version of the GSM insted of use numoy"""
 class TorchGaussianModel(nn.Module):

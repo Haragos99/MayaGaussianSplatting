@@ -1,14 +1,22 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import torch
 from tqdm.auto import tqdm
 
 from .geometry.camera import TorchCamera
+from .densification import (
+    DensificationStats,
+    DensificationConfig,
+    densify_and_prune,
+    reset_opacity,
+    should_densify,
+    should_reset_opacity,
+)
 from .loss import photometric_loss
 from .model_torch import TorchGaussianModel
-from .render.renderer_torch import render_gaussians
+from .render.renderer_torch import render_gaussians, render_gaussians_with_aux
 from .dataset import TrainView
 
 
@@ -34,6 +42,7 @@ class TrainConfig:
     max_per_tile: int | None = 256
 
     seed: int = 0
+    densification: DensificationConfig = field(default_factory=DensificationConfig)
 
 
 def scene_extent(views: list[TrainView]) -> float:
@@ -118,17 +127,32 @@ def train_step(
     views:  list[TrainView],
     optimizer: torch.optim.Adam,
     config: TrainConfig,
+    densification_stats: DensificationStats | None = None,
 ) -> float:
     optimizer.zero_grad(set_to_none=True)
     mean_loss = 0.0
 
     for current_view in views:
         target = current_view.image.to(model.device, non_blocking=True)
-        loss = photometric_loss(
-            render_view(model, current_view, config), target, config.lambda_dssim
-        )
-        (loss / len(views)).backward()
+        if densification_stats is None:
+            rendered = render_view(model, current_view, config)
+        else:
+            rendered, projected = render_gaussians_with_aux(
+                current_view.camera,
+                model,
+                tile_size=config.tile_size,
+                tile_chunk=config.tile_chunk,
+                max_per_tile=config.max_per_tile,
+            )
+        loss = photometric_loss(rendered, target, config.lambda_dssim)
+        loss.backward()
+        if densification_stats is not None:
+            densification_stats.add(projected, current_view.camera.width, current_view.camera.height)
         mean_loss += loss.detach() / len(views)
+
+    for parameter in model.parameters():
+        if parameter.grad is not None:
+            parameter.grad.div_(len(views))
 
     optimizer.step()
 
@@ -148,6 +172,7 @@ def train(
     extent = scene_extent(views) if extent is None else extent
 
     optimizer = create_optimizer(model, config, extent)
+    densification_stats = DensificationStats(len(model), model.device)
 
     #store the loss of the training
     history: list[float] = []
@@ -157,9 +182,42 @@ def train(
     for step in progress:
         update_position_lr(optimizer, config, extent, step)
 
-        loss = train_step(model, views, optimizer, config)
+        iteration = step + 1
+        collect_stats = iteration < config.densification.end_iteration
+        loss = train_step(
+            model,
+            views,
+            optimizer,
+            config,
+            densification_stats if collect_stats else None,
+        )
         history.append(loss)
-        progress.set_postfix(loss=f"{loss:.4f}")
+        if should_densify(iteration, config.densification):
+            result = densify_and_prune(
+                model,
+                optimizer,
+                densification_stats,
+                config.densification,
+                extent,
+                iteration,
+            )
+            progress.write(
+                f"Densification at iteration {iteration}: Gaussians "
+                f"{result['before']} -> {result['after']} "
+                f"(candidates clone={result['clone_candidates']}, split={result['split_candidates']}; "
+                f"added clone={result['cloned']}, split={result['split']}; "
+                f"pruned={result['pruned']} [opacity={result['opacity_pruned']}, "
+                f"screen={result['screen_pruned']}, world={result['world_pruned']}])"
+            )
+        if should_reset_opacity(iteration, config.densification):
+            reset_count = reset_opacity(
+                model, optimizer, config.densification.opacity_reset_value
+            )
+            progress.write(
+                f"Opacity reset at iteration {iteration}: "
+                f"{reset_count} splats capped at {config.densification.opacity_reset_value:g}"
+            )
+        progress.set_postfix(loss=f"{loss:.4f}", splats=len(model))
         if on_iteration is not None:
             on_iteration(step, loss)
 

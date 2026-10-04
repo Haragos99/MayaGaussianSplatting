@@ -1,11 +1,3 @@
-"""End-to-end GPU renderer (guide sections 13, 21, 22).
-
-    Gaussians + camera -> image
-
-This module only wires the stages together. It holds no optimizer, dataset,
-file or checkpoint logic - those live in the training layer.
-"""
-
 from dataclasses import dataclass
 
 import torch
@@ -72,6 +64,34 @@ def render_gaussians(
     alpha_max: float = 0.999,
 ) -> torch.Tensor:
     """-> (H, W, 3) image on the camera's device."""
+    image, _ = render_gaussians_with_aux(
+        camera,
+        gaussians,
+        tile_size=tile_size,
+        tile_chunk=tile_chunk,
+        near=near,
+        epsilon=epsilon,
+        sigma_factor=sigma_factor,
+        max_per_tile=max_per_tile,
+        max_radius=max_radius,
+        alpha_max=alpha_max,
+    )
+    return image
+
+
+def render_gaussians_with_aux(
+    camera: TorchCamera,
+    gaussians: TorchGaussianModel,
+    tile_size: int = 16,
+    tile_chunk: int = 32,
+    near: float = 0.01,
+    epsilon: float = 1e-6,
+    sigma_factor: float = 3.0,
+    max_per_tile: int | None = None,
+    max_radius: float | None = None,
+    alpha_max: float = 0.999,
+) -> tuple[torch.Tensor, ProjectedGaussians]:
+    """Return the rendered image and screen-space data used by training."""
     # A footprint wider than the image already covers every tile, so capping
     # here bounds the pair count without changing what is drawn.
     if max_radius is None:
@@ -81,6 +101,8 @@ def render_gaussians(
         camera, gaussians, near=near, epsilon=epsilon, sigma_factor=sigma_factor,
         max_radius=max_radius,
     )
+    if projected.mean.requires_grad:
+        projected.mean.retain_grad()
 
     bins = build_tile_bins(
         projected.mean,
@@ -109,4 +131,4 @@ def render_gaussians(
         alpha_max=alpha_max,
     )
 
-    return image.clamp(0.0, 1.0)
+    return image.clamp(0.0, 1.0), projected

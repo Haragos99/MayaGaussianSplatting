@@ -240,9 +240,9 @@ def main() -> None:
         type=Path,
         help="image directory; defaults to the COLMAP project's images folder",
     )
-    parser.add_argument("--iterations", type=int, default=1000)
+    parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--max-views", type=int, help="optional cap; defaults to using every COLMAP view")
-    parser.add_argument("--max-edge", type=int, default=256)
+    parser.add_argument("--max-edge", type=int, default=128)
     parser.add_argument("--max-gaussians", type=int, default=5_000)
     parser.add_argument("--output-dir", type=Path, default=Path("out/previews"))
     parser.add_argument("--preview-every", type=int, default=100)
