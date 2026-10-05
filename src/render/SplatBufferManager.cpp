@@ -2,6 +2,12 @@
 
 namespace GS
 {
+    SplatBufferManager::SplatBufferManager()
+        : m_vertexCount(0)
+        , m_indexCount(0)
+    {
+    }
+
     bool SplatBufferManager::uploadVertices(const std::vector<SplatVertex>& vertices)
     {
         releaseVertices();
@@ -118,8 +124,7 @@ namespace GS
 
         m_indexBuffer = std::make_unique<MHWRender::MIndexBuffer>(MHWRender::MGeometry::kUnsignedInt32);
 
-        unsigned int* destination =
-            static_cast<unsigned int*>(m_indexBuffer->acquire(indexCount, true));
+        unsigned int* destination = static_cast<unsigned int*>(m_indexBuffer->acquire(indexCount, true));
 
         if (!destination)
         {
@@ -129,11 +134,8 @@ namespace GS
 
         for (unsigned int i = 0; i < quadCount; ++i)
         {
-            const unsigned int base =
-                quadOrder[i] * kVerticesPerSplatQuad;
-
-            unsigned int* triangles =
-                destination + i * kIndicesPerSplatQuad;
+            const unsigned int base = quadOrder[i] * kVerticesPerSplatQuad;
+            unsigned int* triangles = destination + i * kIndicesPerSplatQuad;
 
             triangles[0] = base + 0;
             triangles[1] = base + 1;

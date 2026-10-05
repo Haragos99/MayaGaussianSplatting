@@ -21,6 +21,8 @@ namespace GS
     class ViewportCamera
     {
     public:
+        ViewportCamera();
+
         // Fills state with the active 3d view camera. Leaves state untouched on failure.
         static bool readActive(CameraState& state);
 
@@ -47,6 +49,6 @@ namespace GS
         static constexpr double kDirectionThreshold = 0.002;
 
         CameraState m_reference;
-        bool m_hasReference = false;
+        bool m_hasReference;
     };
 }

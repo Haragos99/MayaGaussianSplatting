@@ -43,9 +43,7 @@ bool SplatCalculator::buildSplatVertices(
 //
 // Only the six unique components are kept, everything stays in float and no
 // MQuaternion / MMatrix temporary is built per splat.
-SplatCovariance3 SplatCalculator::buildCovariance(
-    const GS::GaussianSplat& splat,
-    float splatSize)
+SplatCovariance3 SplatCalculator::buildCovariance(const GS::GaussianSplat& splat, float splatSize)
 {
     // The PLY decoders store the quaternion as {w, x, y, z}.
     float w = splat.rotation[0];
@@ -53,13 +51,11 @@ SplatCovariance3 SplatCalculator::buildCovariance(
     float y = splat.rotation[2];
     float z = splat.rotation[3];
 
-    const float lengthSquared =
-        w * w + x * x + y * y + z * z;
+    const float lengthSquared = w * w + x * x + y * y + z * z;
 
     if (lengthSquared > 1.0e-12f)
     {
-        const float inverseLength =
-            1.0f / std::sqrt(lengthSquared);
+        const float inverseLength = 1.0f / std::sqrt(lengthSquared);
 
         w *= inverseLength;
         x *= inverseLength;
@@ -108,7 +104,6 @@ SplatCovariance3 SplatCalculator::buildCovariance(
 
 
 // Emit the four camera independent corners of one splat.
-//
 // Every corner carries the same center and the same covariance; only the
 // (+-1, +-1) corner code differs. GaussianSplat.ogsfx projects the covariance
 // and offsets the corner, so nothing here has to be rebuilt when the camera moves.

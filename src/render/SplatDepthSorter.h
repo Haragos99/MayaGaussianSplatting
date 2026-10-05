@@ -29,6 +29,7 @@ namespace GS
     private:
         void radixSort();
 
+		// store the splat centers as a flat array of floats for cache efficiency
         std::vector<float>        m_centers;
         std::vector<unsigned int> m_keys;
         std::vector<unsigned int> m_keysScratch;

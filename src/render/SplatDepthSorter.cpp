@@ -67,6 +67,7 @@ namespace GS
                 center[1] * dy +
                 center[2] * dz;
 
+			// The depth key is inverted so that an ascending radix sort yields a descending (back-to-front) depth order.
             m_keys[i] = makeDepthKey(depth);
             m_order[i] = static_cast<unsigned int>(i);
         }

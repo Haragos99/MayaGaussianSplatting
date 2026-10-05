@@ -19,7 +19,7 @@ struct SplatCovariance3
     float zz = 0.0f;
 };
 
-
+// Computes the covariance and emits the four corners of a splat quad. 
 class SplatCalculator {
 
 public:
@@ -37,10 +37,7 @@ public:
     );
 
 private:
-    static SplatCovariance3 buildCovariance(
-        const GS::GaussianSplat& splat,
-        float splatSize
-    );
+    static SplatCovariance3 buildCovariance(const GS::GaussianSplat& splat, float splatSize);
 
     static void appendSplatQuad(
         const GS::GaussianSplat& splat,

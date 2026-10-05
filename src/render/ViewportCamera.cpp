@@ -11,6 +11,11 @@
 
 namespace GS
 {
+    ViewportCamera::ViewportCamera()
+        : m_hasReference(false)
+    {
+    }
+
     bool ViewportCamera::readActive(CameraState& state)
     {
         M3dView view = M3dView::active3dView();

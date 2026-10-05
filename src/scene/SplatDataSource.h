@@ -14,6 +14,8 @@ namespace GS
     class SplatDataSource
     {
     public:
+        SplatDataSource();
+
         // Returns true when the splat set actually changed.
         bool loadFromFile(const MString& filePath);
 
@@ -40,6 +42,6 @@ namespace GS
         std::vector<GaussianSplat> m_splats;
         MBoundingBox m_bounds;
         MString m_sourcePath;
-        unsigned int m_version = 0;
+        unsigned int m_version;
     };
 }

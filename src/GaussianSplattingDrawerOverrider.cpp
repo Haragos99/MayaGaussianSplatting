@@ -14,27 +14,40 @@ const MString GaussianSplattingSubSceneOverride::kRenderItemName("gaussianSplatR
 
 GaussianSplattingSubSceneOverride::GaussianSplattingSubSceneOverride(const MObject& obj)
     : MPxSubSceneOverride(obj)
-    , m_nodeObj(obj)
 {
+    initialize(obj);
+}
+
+void GaussianSplattingSubSceneOverride::initialize(const MObject& obj)
+{
+    m_node = nullptr;
+    m_nodeObj = obj;
+    m_dirty = true;
+    m_geometryDirty = true;
+    m_shaderDirty = true;
+    m_uiDirty = true;
+    m_vertexBufferDirty = true;
+    m_indexBufferDirty = true;
+    sliderDirty = true;
+    m_lastFrame = std::chrono::high_resolution_clock::now();
+    m_fps = 0.0;
+    m_locator = nullptr;
+    m_dataVersion = 0;
+    m_splatSize = 1.0f;
+    m_splatShader = nullptr;
+
     MStatus status;
     MFnDagNode dagNode(obj, &status);
-    m_lastFrame = std::chrono::high_resolution_clock::now();
     if (status)
     {
         dagNode.getPath(m_dagPath);
     }
-	m_splatSize = 1.0f;
     MFnDependencyNode fnNode(obj);
     m_locator = dynamic_cast<GaussianSplattingLocator*>(fnNode.userNode());
     if (!m_locator)
     {
 		MGlobal::displayError("Failed to get GaussianSplattingLocator node from MObject.");
     }
-
-    m_dirty = true;
-    m_geometryDirty = true;
-    m_shaderDirty = true;
-    m_uiDirty = true;
 }
 
 const std::vector<GS::GaussianSplat>& GaussianSplattingSubSceneOverride::splats() const
@@ -223,7 +236,8 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
         drawManager.text(
             MPoint(0.0, 1.5, 0.0),
             splatSizeLabel,
-            MHWRender::MUIDrawManager::kCenter);
+            MHWRender::MUIDrawManager::kCenter
+        );
 
         MString fpsLabel;
         fpsLabel += "FPS: ";
@@ -232,7 +246,8 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
         drawManager.text(
             MPoint(0.0, 2.5, 0.0),
             fpsLabel,
-            MHWRender::MUIDrawManager::kLeft);
+            MHWRender::MUIDrawManager::kLeft
+        );
         
     }
 
@@ -245,7 +260,8 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
             MVector(0.0, 1.0, 0.0),
             m_boundingBox.width(),
             m_boundingBox.height(),
-            m_boundingBox.depth());
+            m_boundingBox.depth()
+        );
     }
 
     drawManager.endDrawable();
@@ -299,8 +315,7 @@ void GaussianSplattingSubSceneOverride::markDirty()
     m_uiDirty = true;
 }
 
-void GaussianSplattingSubSceneOverride::createOrUpdateRenderItem(
-    MHWRender::MSubSceneContainer& container)
+void GaussianSplattingSubSceneOverride::createOrUpdateRenderItem(MHWRender::MSubSceneContainer& container)
 {
     MRenderItem* item = container.find(kRenderItemName);
 
@@ -371,77 +386,52 @@ void GaussianSplattingSubSceneOverride::createShader()
         false
     );
 
-
-        if (techniques.length() == 0)
-        {
-            MGlobal::displayError(
-                "Maya found no techniques in GaussianSplat.ogsfx."
-            );
-
-            MGlobal::displayError(
-                shaderManager->getLastError()
-            );
-
-            MGlobal::displayError(
-                shaderManager->getLastErrorSource(
-                    true,
-                    true,
-                    10
-                )
-            );
-
-            return;
-        };
-    
-        MGlobal::displayInfo(
-            "GaussianSplat.ogsfx techniques:"
+    if (techniques.length() == 0)
+    {
+        MGlobal::displayError(
+            "Maya found no techniques in GaussianSplat.ogsfx."
         );
 
+        MGlobal::displayError(
+            shaderManager->getLastError()
+        );
 
-        for (unsigned int i = 0;
-            i < techniques.length();
-            ++i)
-        {
-            MGlobal::displayInfo(
-                "  " + techniques[i]
-            );
-        }
+        MGlobal::displayError(
+            shaderManager->getLastErrorSource(
+                true,
+                true,
+                10
+            )
+        );
 
+        return;
+    };
+    
+    MGlobal::displayInfo( "GaussianSplat.ogsfx techniques:");
+    for (unsigned int i = 0; i < techniques.length(); ++i)
+    {
+        MGlobal::displayInfo( "  " + techniques[i] );
+    }
 
-        m_splatShader =
-            shaderManager->getEffectsFileShader(
-                shaderPath,
-                "Main",
-                nullptr,
-                0,
-                false
-            );
+    m_splatShader =
+        shaderManager->getEffectsFileShader(
+            shaderPath,
+            "Main",
+            nullptr,
+            0,
+            false
+        );
 
+    if (!m_splatShader)
+    {
+        MGlobal::displayError("getEffectsFileShader() returned null.");
+        MGlobal::displayError(shaderManager->getLastError());
+        MGlobal::displayError(shaderManager->getLastErrorSource(true,true,10));
 
-        if (!m_splatShader)
-        {
-            MGlobal::displayError(
-                "getEffectsFileShader() returned null."
-            );
+        return;
+    }
 
-            MGlobal::displayError(
-                shaderManager->getLastError()
-            );
-
-            MGlobal::displayError(
-                shaderManager->getLastErrorSource(
-                    true,
-                    true,
-                    10
-                )
-            );
-
-            return;
-        }
-
-    MGlobal::displayInfo(
-        "Gaussian splat OGSFX shader loaded."
-    );
+    MGlobal::displayInfo("Gaussian splat OGSFX shader loaded.");
 
     // The streams SplatBufferManager fills must match this list, otherwise the
     // draw silently produces nothing.
@@ -509,34 +499,30 @@ void GaussianSplattingSubSceneOverride::bindGeometry(
         item,
         vertexBuffers,
         *m_buffers.indexBuffer(),
-        &m_boundingBox);
+        &m_boundingBox
+    );
 }
 
 
-GS::CameraState GaussianSplattingSubSceneOverride::objectSpaceCamera(
-    const GS::CameraState& camera) const
+GS::CameraState GaussianSplattingSubSceneOverride::objectSpaceCamera(const GS::CameraState& camera) const
 {
     if (!m_dagPath.isValid())
     {
         return camera;
     }
 
-    return GS::ViewportCamera::toSpace(
-        camera,
-        m_dagPath.inclusiveMatrixInverse());
+    return GS::ViewportCamera::toSpace(camera, m_dagPath.inclusiveMatrixInverse());
 }
 
 
-void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(
-    const GS::CameraState& camera)
+void GaussianSplattingSubSceneOverride::rebuildSortedIndexBufferOnly(const GS::CameraState& camera)
 {
     // The splat centers are cached in object space, so the camera is brought
     // into that space once instead of transforming every splat per frame.
     const GS::CameraState localCamera = objectSpaceCamera(camera);
 
     // Back-to-front order, required for correct alpha blending.
-    const std::vector<unsigned int>& quadOrder =
-        m_sorter.sortBackToFront(localCamera.forward);
+    const std::vector<unsigned int>& quadOrder = m_sorter.sortBackToFront(localCamera.forward);
 
     m_buffers.uploadQuadIndices(quadOrder);
 
@@ -565,7 +551,8 @@ void GaussianSplattingSubSceneOverride::buildVertexBuffers()
                 splat,
                 vertices,
                 m_splatSize,
-                m_boundingBox))
+                m_boundingBox)
+        )
         {
             m_sorter.addCenter(splat.center);
         }

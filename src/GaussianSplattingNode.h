@@ -11,7 +11,7 @@
 class GaussianSplattingLocator : public MPxLocatorNode
 {
 public:
-    GaussianSplattingLocator() = default;
+    GaussianSplattingLocator();
     static MTypeId id;
     static MObject locatorMsgAttr;
     static void* creator() { return new GaussianSplattingLocator(); }
@@ -40,5 +40,5 @@ public:
 private:
 
     GS::SplatDataSource m_data;
-    bool m_fileDirty = true;
+    bool m_fileDirty;
 };

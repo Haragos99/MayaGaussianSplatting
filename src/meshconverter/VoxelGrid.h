@@ -10,7 +10,7 @@ namespace GS::Mesh
     class VoxelGrid
     {
     public:
-        VoxelGrid() = default;
+        VoxelGrid();
         VoxelGrid(int sizeX, int sizeY, int sizeZ, const MFloatVector& origin,const MFloatVector& cellSize);
 
         int sizeX() const { return m_size[0]; }
@@ -32,12 +32,14 @@ namespace GS::Mesh
         MFloatVector gradientAt(int x, int y, int z) const;
 
     private:
+        void initialize();
+
         size_t index(int x, int y, int z) const;
         int clampAxis(int value, int axis) const;
 
-        int m_size[3] = { 0, 0, 0 };
-        MFloatVector m_origin{ 0.0f, 0.0f, 0.0f };
-        MFloatVector m_cellSize{ 1.0f, 1.0f, 1.0f };
+        int m_size[3];
+        MFloatVector m_origin;
+        MFloatVector m_cellSize;
         std::vector<float> m_values;
     };
 }

@@ -14,7 +14,7 @@ namespace GS
     class SplatBufferManager
     {
     public:
-        SplatBufferManager() = default;
+        SplatBufferManager();
         ~SplatBufferManager() = default;
 
         SplatBufferManager(const SplatBufferManager&) = delete;
@@ -57,7 +57,7 @@ namespace GS
         std::unique_ptr<MHWRender::MVertexBuffer> m_colorBuffer;    // COLOR0
         std::unique_ptr<MHWRender::MIndexBuffer>  m_indexBuffer;
 
-        unsigned int m_vertexCount = 0;
-        unsigned int m_indexCount = 0;
+        unsigned int m_vertexCount;
+        unsigned int m_indexCount;
     };
 }

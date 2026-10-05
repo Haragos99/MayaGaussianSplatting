@@ -20,6 +20,11 @@ namespace
 
 namespace GS
 {
+    SplatDataSource::SplatDataSource()
+        : m_version(0)
+    {
+    }
+
     bool SplatDataSource::loadFromFile(const MString& filePath)
     {
         if (filePath.length() > 0)

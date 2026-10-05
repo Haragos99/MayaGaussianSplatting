@@ -38,7 +38,7 @@ public:
     GaussianSplattingSubSceneOverride(const MObject& obj);
 
     MObject m_object;
-    MPxNode* m_node = nullptr;
+    MPxNode* m_node;
 
     ~GaussianSplattingSubSceneOverride() override;
 
@@ -86,6 +86,8 @@ public:
     void markDirty();
 
 private:
+    void initialize(const MObject& obj);
+
     void createOrUpdateRenderItem(MHWRender::MSubSceneContainer& container);
 
     void createShader();
@@ -111,22 +113,22 @@ private:
     MObject m_nodeObj;
     MDagPath m_dagPath;
 
-    bool m_dirty = true;
-    bool m_geometryDirty = true;
-    bool m_shaderDirty = true;
-    bool m_uiDirty = true;
-    bool m_vertexBufferDirty = true;   // Rebuild only when PLY/data changes.
-    bool m_indexBufferDirty = true;    // Rebuild when camera sorting changes.
+    bool m_dirty;
+    bool m_geometryDirty;
+    bool m_shaderDirty;
+    bool m_uiDirty;
+    bool m_vertexBufferDirty;   // Rebuild only when PLY/data changes.
+    bool m_indexBufferDirty;    // Rebuild when camera sorting changes.
 
-	bool sliderDirty = true;
+	bool sliderDirty;
     std::chrono::high_resolution_clock::time_point m_lastFrame;
-    double m_fps = 0.0;
+    double m_fps;
 
-    GaussianSplattingLocator* m_locator = nullptr;
-    unsigned int m_dataVersion = 0;
+    GaussianSplattingLocator* m_locator;
+    unsigned int m_dataVersion;
 
 	float m_splatSize;
-    MHWRender::MShaderInstance* m_splatShader = nullptr;
+    MHWRender::MShaderInstance* m_splatShader;
 
     MBoundingBox m_boundingBox;
 

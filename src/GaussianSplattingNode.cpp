@@ -13,6 +13,11 @@ MObject GaussianSplattingLocator::aFileName;
 MObject GaussianSplattingLocator::aEnableBoundingBox;
 MObject GaussianSplattingLocator::aEnbelSplatinfo;
 
+GaussianSplattingLocator::GaussianSplattingLocator()
+    : m_fileDirty(true)
+{
+}
+
 
 MStatus GaussianSplattingLocator::connectionMade(const MPlug& plug, const MPlug& otherPlug, bool asSrc)
 {
@@ -111,9 +116,7 @@ unsigned int GaussianSplattingLocator::syncSplatData()
 }
 
 
-MStatus GaussianSplattingLocator::compute(
-    const MPlug& plug,
-    MDataBlock& dataBlock)
+MStatus GaussianSplattingLocator::compute(const MPlug& plug, MDataBlock& dataBlock)
 {
     if (plug == outputAttr)
     {
@@ -132,9 +135,7 @@ MStatus GaussianSplattingLocator::compute(
 }
 
 
-MStatus GaussianSplattingLocator::setDependentsDirty(
-    const MPlug& plug,
-    MPlugArray& affectedPlugs)
+MStatus GaussianSplattingLocator::setDependentsDirty(const MPlug& plug, MPlugArray& affectedPlugs)
 {
     if (plug == aFileName)
     {
