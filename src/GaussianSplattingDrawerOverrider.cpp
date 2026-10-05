@@ -324,7 +324,8 @@ void GaussianSplattingSubSceneOverride::createOrUpdateRenderItem(MHWRender::MSub
         item = MRenderItem::Create(
             kRenderItemName,
             MRenderItem::DecorationItem,
-            MGeometry::kTriangles);
+            MGeometry::kTriangles
+        );
 
         if (!item)
         {
@@ -359,10 +360,7 @@ void GaussianSplattingSubSceneOverride::createShader()
         return;
     }
 
-
-    auto api =
-        renderer->drawAPI();
-
+    auto api = renderer->drawAPI();
     if (api != MHWRender::kOpenGLCoreProfile)
     {
         MGlobal::displayError(
@@ -373,70 +371,64 @@ void GaussianSplattingSubSceneOverride::createShader()
         return;
     }
 
-    MStringArray techniques;
-
-    const MString shaderPath =
-        MString(GS_BUILD_SHADER_DIR) + "/" + GS_SHADER_FILE_NAME;
-
-    shaderManager->getEffectsTechniques(
-        shaderPath,
-        techniques,
-        nullptr,
-        0,
-        false
-    );
-
-    if (techniques.length() == 0)
+    const MString shaderPath = MString(GS_BUILD_SHADER_DIR) + "/" + GS_SHADER_FILE_NAME;
+    if (!createEffectsTechnique(shaderManager, shaderPath))
     {
-        MGlobal::displayError(
-            "Maya found no techniques in GaussianSplat.ogsfx."
-        );
-
-        MGlobal::displayError(
-            shaderManager->getLastError()
-        );
-
-        MGlobal::displayError(
-            shaderManager->getLastErrorSource(
-                true,
-                true,
-                10
-            )
-        );
-
         return;
-    };
-    
-    MGlobal::displayInfo( "GaussianSplat.ogsfx techniques:");
-    for (unsigned int i = 0; i < techniques.length(); ++i)
-    {
-        MGlobal::displayInfo( "  " + techniques[i] );
     }
+   
+    if (!createShaderInstance(shaderManager, shaderPath))
+    {
+		return;
+    }
+    MGlobal::displayInfo("Gaussian splat OGSFX shader loaded.");
+    printShaderBufferInfo();
+   
+}
 
-    m_splatShader =
-        shaderManager->getEffectsFileShader(
-            shaderPath,
-            "Main",
-            nullptr,
-            0,
-            false
-        );
 
+bool GaussianSplattingSubSceneOverride::createShaderInstance(const MShaderManager* shaderManager, const MString shaderPath)
+{
+    m_splatShader =shaderManager->getEffectsFileShader(shaderPath,"Main", nullptr,0, false);
     if (!m_splatShader)
     {
         MGlobal::displayError("getEffectsFileShader() returned null.");
         MGlobal::displayError(shaderManager->getLastError());
-        MGlobal::displayError(shaderManager->getLastErrorSource(true,true,10));
+        MGlobal::displayError(shaderManager->getLastErrorSource(true, true, 10));
 
-        return;
+        return false;
     }
 
-    MGlobal::displayInfo("Gaussian splat OGSFX shader loaded.");
+	return true;
+}
 
-    // The streams SplatBufferManager fills must match this list, otherwise the
-    // draw silently produces nothing.
+
+bool GaussianSplattingSubSceneOverride::createEffectsTechnique(const MShaderManager* shaderManager, const MString shaderPath)
+{
+    MStringArray techniques;
+    shaderManager->getEffectsTechniques(shaderPath, techniques, nullptr, 0, false);
+
+    if (techniques.length() == 0)
+    {
+        MGlobal::displayError("Maya found no techniques in GaussianSplat.ogsfx.");
+        MGlobal::displayError(shaderManager->getLastError());
+        MGlobal::displayError(shaderManager->getLastErrorSource(true, true, 10));
+
+        return false;
+    };
+
+    MGlobal::displayInfo("GaussianSplat.ogsfx techniques:");
+    for (unsigned int i = 0; i < techniques.length(); ++i)
+    {
+        MGlobal::displayInfo("  " + techniques[i]);
+    }
+	return true;
+}
+
+void GaussianSplattingSubSceneOverride::printShaderBufferInfo()
+{
+   // The streams SplatBufferManager fills must match this list, otherwise the draw silently produces nothing.
     MHWRender::MVertexBufferDescriptorList requiredBuffers;
-
     if (m_splatShader->requiredVertexBuffers(requiredBuffers))
     {
         for (int i = 0; i < requiredBuffers.length(); ++i)

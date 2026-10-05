@@ -92,6 +92,12 @@ private:
 
     void createShader();
 
+    bool createEffectsTechnique(const MShaderManager* shaderManager, const MString shaderPath);
+
+    bool createShaderInstance(const MShaderManager* shaderManager, const MString shaderPath);
+
+	void printShaderBufferInfo();
+
     void releaseShader();
 
     // Drops every cached GPU/CPU result so the next update rebuilds from scratch.
