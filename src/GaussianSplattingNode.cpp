@@ -41,7 +41,7 @@ MStatus GaussianSplattingLocator::initialize()
     MFnNumericAttribute nAttr;
 
     aEnableBoundingBox = nAttr.create(
-        "enableeBoundingBox",
+        "enableBoundingBox",
         "ef",
         MFnNumericData::kBoolean,
         true

@@ -26,14 +26,10 @@ namespace GS
 
         // Re-expresses the camera in another space, for example object space
         // through the world-to-object matrix. Assumes a rigid transform.
-        static CameraState toSpace(
-            const CameraState& state,
-            const MMatrix& transform);
+        static CameraState toSpace(const CameraState& state,const MMatrix& transform);
 
         // Signed distance of a world point along the camera view direction.
-        static double depthAlongView(
-            const MPoint& worldPoint,
-            const CameraState& state);
+        static double depthAlongView(const MPoint& worldPoint,const CameraState& state);
 
         bool hasReference() const { return m_hasReference; }
 

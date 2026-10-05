@@ -24,6 +24,7 @@ namespace GS::Mesh
         static MObject convert(const std::vector<GaussianSplat>& splats,
                                const MBoundingBox& bounds,
                                const ConversionSettings& settings,
-                               const MString& baseName);
+                               const MString& baseName
+        );
     };
 }

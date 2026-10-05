@@ -47,8 +47,7 @@ namespace GS
     }
 
 
-    const std::vector<unsigned int>& SplatDepthSorter::sortBackToFront(
-        const MVector& viewDirection)
+    const std::vector<unsigned int>& SplatDepthSorter::sortBackToFront(const MVector& viewDirection)
     {
         const size_t count = quadCount();
 

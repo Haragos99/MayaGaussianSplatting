@@ -25,11 +25,15 @@ namespace GS::Mesh
         MStatus status;
         MArgDatabase argData(syntax(), args, &status);
         if (!status)
+        {
             return status;
+        }
 
         MString nodeName;
         if (argData.isFlagSet("-node"))
+        {
             argData.getFlagArgument("-node", 0, nodeName);
+        }
 
         MSelectionList selection;
         if (!selection.add(nodeName) || selection.isEmpty())
@@ -54,7 +58,9 @@ namespace GS::Mesh
         ConversionSettings settings;
 
         if (argData.isFlagSet("-resolution"))
+        {
             argData.getFlagArgument("-resolution", 0, settings.resolution);
+        }
 
         if (argData.isFlagSet("-isoLevel"))
         {
@@ -67,7 +73,8 @@ namespace GS::Mesh
             locator->splats(),
             locator->splatBounds(),
             settings,
-            fnNode.name() + "_mesh");
+            fnNode.name() + "_mesh"
+        );
 
         return mesh.isNull() ? MS::kFailure : MS::kSuccess;
     }

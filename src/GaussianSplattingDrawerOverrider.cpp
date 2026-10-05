@@ -228,11 +228,12 @@ void GaussianSplattingSubSceneOverride::addUIDrawables(
         MString fpsLabel;
         fpsLabel += "FPS: ";
         fpsLabel += static_cast<int>(m_fps);
-
+        
         drawManager.text(
             MPoint(0.0, 2.5, 0.0),
             fpsLabel,
             MHWRender::MUIDrawManager::kLeft);
+        
     }
 
     if (isBoundingBoxActive())

@@ -8,10 +8,9 @@
 namespace GS
 {
     // Produces the back-to-front draw order required by alpha blending.
-    //
     // The previous std::sort did O(n log n) comparisons and multiplied a point
     // by the object-to-world matrix twice per comparison. This class caches the
-    // centers, builds one 32 bit depth key per splat and runs a 4 pass LSD
+    // centers, builds one 32 bit depth key per splat and runs a 4 pass LSD (Least Significant Digit)
     // radix sort, which is linear and comparison free.
     class SplatDepthSorter
     {

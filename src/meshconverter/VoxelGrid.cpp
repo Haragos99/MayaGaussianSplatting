@@ -4,19 +4,13 @@
 
 namespace GS::Mesh
 {
-    VoxelGrid::VoxelGrid(int sizeX, int sizeY, int sizeZ,
-                         const MFloatVector& origin,
-                         const MFloatVector& cellSize)
-        : m_origin(origin)
-        , m_cellSize(cellSize)
+    VoxelGrid::VoxelGrid(int sizeX, int sizeY, int sizeZ,const MFloatVector& origin,const MFloatVector& cellSize): m_origin(origin), m_cellSize(cellSize)
     {
         m_size[0] = std::max(sizeX, 0);
         m_size[1] = std::max(sizeY, 0);
         m_size[2] = std::max(sizeZ, 0);
 
-        m_values.assign(
-            static_cast<size_t>(m_size[0]) * m_size[1] * m_size[2], 0.0f
-        );
+        m_values.assign(static_cast<size_t>(m_size[0]) * m_size[1] * m_size[2], 0.0f);
     }
 
     bool VoxelGrid::isEmpty() const

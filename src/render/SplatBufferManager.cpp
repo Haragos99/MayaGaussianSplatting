@@ -2,13 +2,11 @@
 
 namespace GS
 {
-    bool SplatBufferManager::uploadVertices(
-        const std::vector<SplatVertex>& vertices)
+    bool SplatBufferManager::uploadVertices(const std::vector<SplatVertex>& vertices)
     {
         releaseVertices();
 
-        const unsigned int vertexCount =
-            static_cast<unsigned int>(vertices.size());
+        const unsigned int vertexCount = vertices.size();
 
         if (vertexCount == 0)
         {
@@ -19,61 +17,48 @@ namespace GS
             "",
             MHWRender::MGeometry::kPosition,
             MHWRender::MGeometry::kFloat,
-            3);
+            3
+        );
 
         const MHWRender::MVertexBufferDescriptor covADesc(
             "",
             MHWRender::MGeometry::kNormal,
             MHWRender::MGeometry::kFloat,
-            3);
+            3
+        );
 
         const MHWRender::MVertexBufferDescriptor covBDesc(
             "",
             MHWRender::MGeometry::kTangent,
             MHWRender::MGeometry::kFloat,
-            3);
+            3
+        );
 
         const MHWRender::MVertexBufferDescriptor cornerDesc(
             "",
             MHWRender::MGeometry::kTexture,
             MHWRender::MGeometry::kFloat,
-            2);
+            2
+        );
 
         const MHWRender::MVertexBufferDescriptor colorDesc(
             "",
             MHWRender::MGeometry::kColor,
             MHWRender::MGeometry::kFloat,
-            4);
+            4
+        );
 
-        m_centerBuffer =
-            std::make_unique<MHWRender::MVertexBuffer>(centerDesc);
+        m_centerBuffer = std::make_unique<MHWRender::MVertexBuffer>(centerDesc);
+        m_covABuffer = std::make_unique<MHWRender::MVertexBuffer>(covADesc);
+        m_covBBuffer = std::make_unique<MHWRender::MVertexBuffer>(covBDesc);
+        m_cornerBuffer = std::make_unique<MHWRender::MVertexBuffer>(cornerDesc);
+        m_colorBuffer =  std::make_unique<MHWRender::MVertexBuffer>(colorDesc);
 
-        m_covABuffer =
-            std::make_unique<MHWRender::MVertexBuffer>(covADesc);
-
-        m_covBBuffer =
-            std::make_unique<MHWRender::MVertexBuffer>(covBDesc);
-
-        m_cornerBuffer =
-            std::make_unique<MHWRender::MVertexBuffer>(cornerDesc);
-
-        m_colorBuffer =
-            std::make_unique<MHWRender::MVertexBuffer>(colorDesc);
-
-        float* centers =
-            static_cast<float*>(m_centerBuffer->acquire(vertexCount, true));
-
-        float* covA =
-            static_cast<float*>(m_covABuffer->acquire(vertexCount, true));
-
-        float* covB =
-            static_cast<float*>(m_covBBuffer->acquire(vertexCount, true));
-
-        float* corners =
-            static_cast<float*>(m_cornerBuffer->acquire(vertexCount, true));
-
-        float* colors =
-            static_cast<float*>(m_colorBuffer->acquire(vertexCount, true));
+        float* centers =  static_cast<float*>(m_centerBuffer->acquire(vertexCount, true));
+        float* covA = static_cast<float*>(m_covABuffer->acquire(vertexCount, true));
+        float* covB =  static_cast<float*>(m_covBBuffer->acquire(vertexCount, true));
+        float* corners = static_cast<float*>(m_cornerBuffer->acquire(vertexCount, true));
+        float* colors = static_cast<float*>(m_colorBuffer->acquire(vertexCount, true));
 
         if (!centers || !covA || !covB || !corners || !colors)
         {
@@ -118,25 +103,20 @@ namespace GS
     }
 
 
-    bool SplatBufferManager::uploadQuadIndices(
-        const std::vector<unsigned int>& quadOrder)
+    bool SplatBufferManager::uploadQuadIndices(const std::vector<unsigned int>& quadOrder)
     {
         releaseIndices();
 
-        const unsigned int quadCount =
-            static_cast<unsigned int>(quadOrder.size());
+        const unsigned int quadCount = static_cast<unsigned int>(quadOrder.size());
 
         if (quadCount == 0)
         {
             return false;
         }
 
-        const unsigned int indexCount =
-            quadCount * kIndicesPerSplatQuad;
+        const unsigned int indexCount = quadCount * kIndicesPerSplatQuad;
 
-        m_indexBuffer =
-            std::make_unique<MHWRender::MIndexBuffer>(
-                MHWRender::MGeometry::kUnsignedInt32);
+        m_indexBuffer = std::make_unique<MHWRender::MIndexBuffer>(MHWRender::MGeometry::kUnsignedInt32);
 
         unsigned int* destination =
             static_cast<unsigned int*>(m_indexBuffer->acquire(indexCount, true));
@@ -229,7 +209,6 @@ namespace GS
     void SplatBufferManager::releaseIndices()
     {
         m_indexBuffer.reset();
-
         m_indexCount = 0;
     }
 

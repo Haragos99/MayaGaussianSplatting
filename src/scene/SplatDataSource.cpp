@@ -63,8 +63,7 @@ namespace GS
         {
             adopt(std::move(loaded), kBackupFilePath);
 
-            MGlobal::displayInfo(
-                "Gaussian splats loaded from backup file: " + kBackupFilePath);
+            MGlobal::displayInfo("Gaussian splats loaded from backup file: " + kBackupFilePath);
 
             return true;
         }
@@ -87,18 +86,15 @@ namespace GS
         {
             for (int x = 0; x < countX; ++x)
             {
-                const float fx =
-                    static_cast<float>(x) / static_cast<float>(countX - 1);
-
-                const float fy =
-                    static_cast<float>(y) / static_cast<float>(countY - 1);
+                const float fx =static_cast<float>(x) / static_cast<float>(countX - 1);
+                const float fy =static_cast<float>(y) / static_cast<float>(countY - 1);
 
                 GaussianSplat splat;
-
                 splat.center = MPoint(
                     (fx - 0.5f) * 6.0f,
                     (fy - 0.5f) * 4.0f,
-                    std::sin(fx * 6.2831853f) * 0.5f);
+                    std::sin(fx * 6.2831853f) * 0.5f
+                );
 
                 splat.color = MColor(fx, fy, 1.0f - fx, 0.45f);
                 splat.scaleX = 0.08f;
@@ -112,14 +108,11 @@ namespace GS
 
         adopt(std::move(generated), kProceduralSourceName);
 
-        MGlobal::displayWarning(
-            "No valid Gaussian splat file. Using the procedural backup grid.");
+        MGlobal::displayWarning("No valid Gaussian splat file. Using the procedural backup grid.");
     }
 
 
-    void SplatDataSource::adopt(
-        std::vector<GaussianSplat>&& splats,
-        const MString& sourcePath)
+    void SplatDataSource::adopt(std::vector<GaussianSplat>&& splats, const MString& sourcePath)
     {
         m_splats = std::move(splats);
         m_bounds = computeBounds(m_splats);
@@ -136,8 +129,7 @@ namespace GS
 
         for (const GaussianSplat& splat : splats)
         {
-            const double r =
-                std::max(splat.scaleX, splat.scaleY) * 2.0;
+            const double r = std::max(splat.scaleX, splat.scaleY) * 2.0;
 
             bounds.expand(splat.center + MVector(r, r, r));
             bounds.expand(splat.center + MVector(-r, -r, -r));

@@ -30,14 +30,12 @@ namespace GS
 
     private:
         bool loadBackup();
+
         void buildProceduralBackup();
 
-        void adopt(
-            std::vector<GaussianSplat>&& splats,
-            const MString& sourcePath);
+        void adopt( std::vector<GaussianSplat>&& splats, const MString& sourcePath);
 
-        static MBoundingBox computeBounds(
-            const std::vector<GaussianSplat>& splats);
+        static MBoundingBox computeBounds(const std::vector<GaussianSplat>& splats);
 
         std::vector<GaussianSplat> m_splats;
         MBoundingBox m_bounds;

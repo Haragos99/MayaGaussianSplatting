@@ -32,15 +32,15 @@ namespace GS::Mesh
 
         if (data.isEmpty())
         {
-            MGlobal::displayWarning(
-                "Splat to mesh: no surface at the requested iso level.");
+            MGlobal::displayWarning("Splat to mesh: no surface at the requested iso level.");
             return MObject::kNullObj;
         }
 
         MGlobal::displayInfo(
             MString("Splat to mesh: ") + static_cast<int>(data.points.length()) +
             " vertices, " + static_cast<int>(data.polygonCounts.length()) +
-            " triangles.");
+            " triangles."
+        );
 
         return MayaMeshBuilder::create(data, baseName);
     }

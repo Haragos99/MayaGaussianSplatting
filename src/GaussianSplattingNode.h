@@ -5,6 +5,9 @@
 #include "scene/SplatDataSource.h"
 
 // MyLocator node is drawn using MyLocatorDrawOverride
+// It manages the loading and storage of splat data from a specified file. 
+// The node provides attributes for splat size, file path, and options to enable bounding box and splat info display. 
+// It also handles connections and updates to ensure the splat data is synchronized with the specified file.
 class GaussianSplattingLocator : public MPxLocatorNode
 {
 public:
@@ -33,8 +36,6 @@ public:
     const std::vector<GS::GaussianSplat>& splats() const { return m_data.splats(); }
 
     const MBoundingBox& splatBounds() const { return m_data.bounds(); }
-
-
 
 private:
 

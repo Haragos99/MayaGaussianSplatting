@@ -24,7 +24,9 @@
 
 using namespace MHWRender;
 
-
+// This class is responsible for overriding the default drawing behavior of the GaussianSplattingNode in Maya's viewport. 
+// It manages the creation and updating of render items, shaders, and vertex/index buffers for efficient rendering of Gaussian splats. 
+// It also handles selection and UI drawing for the node.
 class GaussianSplattingSubSceneOverride final : public MHWRender::MPxSubSceneOverride
 {
 public:
@@ -56,8 +58,7 @@ public:
         MHWRender::MSubSceneContainer& container,
         const MHWRender::MFrameContext& frameContext) override;
 
-    bool furtherUpdateRequired(
-        const MHWRender::MFrameContext& frameContext) override;
+    bool furtherUpdateRequired(const MHWRender::MFrameContext& frameContext) override;
 
     bool hasUIDrawables() const override;
 
@@ -85,8 +86,7 @@ public:
     void markDirty();
 
 private:
-    void createOrUpdateRenderItem(
-        MHWRender::MSubSceneContainer& container);
+    void createOrUpdateRenderItem(MHWRender::MSubSceneContainer& container);
 
     void createShader();
 
@@ -108,7 +108,6 @@ private:
     void bindGeometry(MHWRender::MRenderItem& item);
 
     static const MString kRenderItemName;
-    unsigned int CircleSegments = 16;
     MObject m_nodeObj;
     MDagPath m_dagPath;
 

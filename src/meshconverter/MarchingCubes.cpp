@@ -11,8 +11,7 @@ namespace GS::Mesh
     {
         using namespace MarchingCubesTables;
 
-        // Below this the two corner samples count as equal and the crossing is
-        // put in the middle of the edge.
+        // Below this the two corner samples count as equal and the crossing is put in the middle of the edge.
         constexpr float kDenominatorEpsilon = 1e-6f;
     }
 

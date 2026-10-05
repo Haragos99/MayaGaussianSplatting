@@ -7,8 +7,7 @@ namespace GS::Mesh
 {
     namespace
     {
-        // Splats fainter than one 8 bit alpha step cannot lift a cell over any
-        // useful iso level.
+        // Splats fainter than one 8 bit alpha step cannot lift a cell over any useful iso level.
         constexpr float kMinOpacity = 1.0f / 255.0f;
 
         // A Gaussian thinner than the grid would fall between two samples.
@@ -78,12 +77,12 @@ namespace GS::Mesh
         const MFloatVector origin(
             static_cast<float>(minimum.x) - kBorderCells * step,
             static_cast<float>(minimum.y) - kBorderCells * step,
-            static_cast<float>(minimum.z) - kBorderCells * step);
+            static_cast<float>(minimum.z) - kBorderCells * step
+        );
 
         // for the grid size calculation
         const auto samplesAlong = [step](float length) {
-            return std::max(2,
-                static_cast<int>(std::ceil(length / step)) + 1 + 2 * kBorderCells);
+            return std::max(2, static_cast<int>(std::ceil(length / step)) + 1 + 2 * kBorderCells);
         };
 
         VoxelGrid grid(samplesAlong(extent[0]),
@@ -140,23 +139,19 @@ namespace GS::Mesh
         {
             const float relative = center[axis] - originAxis[axis];
 
-            lower[axis] = std::max(0,
-                static_cast<int>(std::floor((relative - reach) / cellAxis[axis])));
-
-            upper[axis] = std::min(size[axis] - 1,
-                static_cast<int>(std::ceil((relative + reach) / cellAxis[axis])));
+            lower[axis] = std::max(0, static_cast<int>(std::floor((relative - reach) / cellAxis[axis])));
+            upper[axis] = std::min(size[axis] - 1, static_cast<int>(std::ceil((relative + reach) / cellAxis[axis])));
 
             if (lower[axis] > upper[axis])
+            {
                 return;
+            }
         }
 
         float axes[3][3];
         quaternionAxes(splat.rotation, axes);
 
-        const float inverseDeviation[3] = {
-            1.0f / deviation[0], 1.0f / deviation[1], 1.0f / deviation[2]
-        };
-
+        const float inverseDeviation[3] = {1.0f / deviation[0], 1.0f / deviation[1], 1.0f / deviation[2]};
         const float cutoff = m_reachInDeviations * m_reachInDeviations;
 
         for (int z = lower[2]; z <= upper[2]; ++z)
@@ -166,9 +161,7 @@ namespace GS::Mesh
                 for (int x = lower[0]; x <= upper[0]; ++x)
                 {
                     const MFloatVector point = grid.positionAt(x, y, z);
-                    const float offset[3] = {
-                        point.x - center[0], point.y - center[1], point.z - center[2]
-                    };
+                    const float offset[3] = { point.x - center[0], point.y - center[1], point.z - center[2]};
 
                     // Into the splat's own frame, where the covariance is
                     // diagonal and the falloff is a plain squared distance.

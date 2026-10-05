@@ -6,15 +6,12 @@
 
 namespace GS::Mesh
 {
-    // Dense scalar volume on a regular lattice: the only input marching cubes
-    // understands.
+    // Dense scalar volume on a regular lattice: the only input marching cubes understands.
     class VoxelGrid
     {
     public:
         VoxelGrid() = default;
-        VoxelGrid(int sizeX, int sizeY, int sizeZ,
-                  const MFloatVector& origin,
-                  const MFloatVector& cellSize);
+        VoxelGrid(int sizeX, int sizeY, int sizeZ, const MFloatVector& origin,const MFloatVector& cellSize);
 
         int sizeX() const { return m_size[0]; }
         int sizeY() const { return m_size[1]; }
