@@ -22,6 +22,10 @@ A C++ plugin for **Autodesk Maya** that renders **Gaussian splats** directly in 
 
 The plugin reads a Gaussian splat file and shows it in the Maya viewport. It prepares the splat data, sends it to the GPU, and renders each splat as a soft, round point that keeps its color and transparency. This makes the scene feel lightweight and interactive while staying close to the original Gaussian representation.
 
+## Developer note
+
+The current development focus is interactive Gaussian Splatting in Maya. Mesh conversion is available as a separate workflow, but it is not the current priority. Further research will focus on rendering performance and animation support. See the [development diary](doc/development-diary.md) for the project history and technical notes.
+
 ## References and inspiration
 
 This project is inspired by:
@@ -46,6 +50,6 @@ This project is inspired by:
 
 ## Future work
 
+- Improved rendering performance
 - Animation support
 - Level-of-detail (LOD) rendering
-- Improved rendering performance
