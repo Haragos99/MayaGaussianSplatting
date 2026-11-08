@@ -3,10 +3,10 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from .gstrain.colmap import load_colmap
-from .gstrain.utility import project_points, show_rendered_image, plot_points3D, plot_scene, plot_projection
-from .gstrain.model import initialize_gaussians
-from .gstrain.render.renderer_numpy import renderGS
+from gstrain.colmap import load_colmap
+from gstrain.utility import project_points, show_rendered_image, plot_points3D, plot_scene, plot_projection
+from gstrain.model import initialize_gaussians
+from gstrain.render.renderer_numpy import renderGS
 from gstrain.model_torch import TorchGaussianModel
 from gstrain.torch_utils import choose_device, describe_device
 from gstrain.colmap import quaternion_to_rotmatrix
@@ -16,16 +16,17 @@ from gstrain.geometry.camera import TorchCamera
 from gstrain.render.projection import project_points_Torch, world_to_camera
 from gstrain.render.binning import build_tile_bins
 from gstrain.render.renderer_torch import render_gaussians
-from .gstrain.cameras import create_training_cameras
-from .gstrain.colmap import Points3D, load_colmap
-from .gstrain.dataset import build_views
-from .gstrain.export_ply import write_ply
-from .gstrain.geometry.camera import TorchCamera
-from .gstrain.model import initialize_gaussians
-from .gstrain.model_torch import TorchGaussianModel
-from .gstrain.preview import save_progress_preview
-from .gstrain.torch_utils import choose_device, describe_device
-from .gstrain.train import TrainConfig, TrainView, train
+from gstrain.cameras import create_training_cameras
+from gstrain.colmap import Points3D, load_colmap
+from gstrain.dataset import build_views
+from gstrain.densification import DensificationConfig
+from gstrain.export_ply import write_ply
+from gstrain.geometry.camera import TorchCamera
+from gstrain.model import initialize_gaussians
+from gstrain.model_torch import TorchGaussianModel
+from gstrain.preview import save_progress_preview
+from gstrain.torch_utils import choose_device, describe_device
+from gstrain.train import TrainConfig, TrainView, train
 import time
 import torch
 
@@ -106,7 +107,10 @@ def run_training_test(
     losses = train(
         model,
         views,
-        config=TrainConfig(iterations=iterations),
+        config=TrainConfig(
+            iterations=iterations,
+            densification=DensificationConfig.for_iterations(iterations),
+        ),
         on_iteration=save_periodic_preview,
     )
     ply_output = ply_output or output_dir.parent / "point_cloud.ply"
@@ -240,9 +244,9 @@ def main() -> None:
         type=Path,
         help="image directory; defaults to the COLMAP project's images folder",
     )
-    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--iterations", type=int, default=1000)
     parser.add_argument("--max-views", type=int, help="optional cap; defaults to using every COLMAP view")
-    parser.add_argument("--max-edge", type=int, default=128)
+    parser.add_argument("--max-edge", type=int, default=256)
     parser.add_argument("--max-gaussians", type=int, default=5_000)
     parser.add_argument("--output-dir", type=Path, default=Path("out/previews"))
     parser.add_argument("--preview-every", type=int, default=100)

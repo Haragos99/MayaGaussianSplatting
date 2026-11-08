@@ -26,15 +26,31 @@ def tile_grid(width: int, height: int, tile_size: int) -> tuple[int, int]:
     return math.ceil(width / tile_size), math.ceil(height / tile_size)
 
 
+def cutoff_sigma(opacity: torch.Tensor, alpha_min: float = 1.0 / 255.0) -> torch.Tensor:
+    """(N,) opacity -> (N,) Mahalanobis distance where alpha falls to alpha_min.
+
+    opacity * exp(-d^2 / 2) = alpha_min  =>  d = sqrt(2 ln(opacity / alpha_min)).
+    About 3.33 sigma for an opaque splat and 0 for one that is never visible,
+    so the bounding box ends exactly where the rasterizer's alpha cutoff does.
+    """
+    ratio = (opacity.detach() / alpha_min).clamp_min(1.0)
+    return (2.0 * ratio.log()).sqrt()
+
+
 def screen_radius(
     cov2d: torch.Tensor,
-    sigma_factor: float = 3.0,
+    sigma_factor: float | torch.Tensor = 3.0,
     max_radius: float | None = None,
 ) -> torch.Tensor:
-    """(N, 2, 2) -> (N, 2) axis-aligned 3-sigma pixel radii."""
+    """(N, 2, 2) -> (N, 2) axis-aligned pixel radii of the sigma_factor ellipse.
+
+    sigma_factor is a scalar or a per-Gaussian (N,) tensor (see cutoff_sigma).
+    """
     rx = cov2d[..., 0, 0].clamp_min(1e-8).sqrt()
     ry = cov2d[..., 1, 1].clamp_min(1e-8).sqrt()
 
+    if isinstance(sigma_factor, torch.Tensor):
+        sigma_factor = sigma_factor.unsqueeze(-1)
     radius = sigma_factor * torch.stack([rx, ry], dim=-1)
 
     # A Gaussian near the camera can project to millions of pixels and alone
@@ -79,13 +95,17 @@ def build_tile_bins(
     width: int,
     height: int,
     tile_size: int = 16,
-    sigma_factor: float = 3.0,
+    sigma_factor: float | torch.Tensor = 3.0,
     max_radius: float | None = None,
+    radius: torch.Tensor | None = None,
 ) -> TileBins:
+    """Pass `radius` to reuse radii already computed by the renderer."""
     device = uv.device
     grid_x, grid_y = tile_grid(width, height, tile_size)
 
-    radius = screen_radius(cov2d, sigma_factor, max_radius=max_radius)
+    if radius is None:
+        radius = screen_radius(cov2d, sigma_factor, max_radius=max_radius)
+    radius = radius.detach()
     box, touches = tile_ranges(uv, radius, width, height, tile_size)
     keep = visible & touches
 

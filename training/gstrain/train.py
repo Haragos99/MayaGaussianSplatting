@@ -39,7 +39,11 @@ class TrainConfig:
 
     tile_size: int = 16
     tile_chunk: int = 64
-    max_per_tile: int | None = 256
+    # No hard cap: a cap drops visible splats in crowded tiles (square seams in
+    # the render, and the dropped splats get no gradient so never densify).
+    # The rasterizer stops early once a tile is opaque instead.
+    max_per_tile: int | None = None
+    depth_chunk: int = 256
 
     seed: int = 0
     densification: DensificationConfig = field(default_factory=DensificationConfig)
@@ -119,6 +123,7 @@ def render_view(
         tile_size=config.tile_size,
         tile_chunk=config.tile_chunk,
         max_per_tile=config.max_per_tile,
+        depth_chunk=config.depth_chunk,
     )
 
 
@@ -143,6 +148,7 @@ def train_step(
                 tile_size=config.tile_size,
                 tile_chunk=config.tile_chunk,
                 max_per_tile=config.max_per_tile,
+                depth_chunk=config.depth_chunk,
             )
         loss = photometric_loss(rendered, target, config.lambda_dssim)
         loss.backward()
@@ -179,6 +185,7 @@ def train(
 
     # Training Loop
     progress = tqdm(range(config.iterations), desc="Training", unit="iter")
+    progress.write(config.densification.describe())
     for step in progress:
         update_position_lr(optimizer, config, extent, step)
 

@@ -2,6 +2,11 @@ import torch
 
 from .binning import TileBins
 
+# 3DGS skips any splat whose alpha at a pixel is below 1/255: it cannot change
+# an 8-bit pixel, and cutting there (instead of at a fixed box) means the edge
+# of a splat never depends on which tiles it was binned into.
+ALPHA_MIN = 1.0 / 255.0
+
 
 def rasterize_tiles(
     bins: TileBins,
@@ -9,7 +14,6 @@ def rasterize_tiles(
     conic: torch.Tensor,
     opacity: torch.Tensor,
     color: torch.Tensor,
-    radius: torch.Tensor,
     width: int,
     height: int,
     tile_size: int = 16,
@@ -26,6 +30,7 @@ def rasterize_tiles(
         return image.view(height, width, 3)
 
     offset = torch.arange(tile_size, device=device)
+    num_pixels = tile_size * tile_size
     shaded_index: list[torch.Tensor] = []
     shaded_rgb: list[torch.Tensor] = []
 
@@ -44,18 +49,6 @@ def rasterize_tiles(
             continue
 
         num_tiles = tile_index.numel()
-        num_pixels = tile_size * tile_size
-
-        slot = torch.arange(depth_slots, device=device)
-        occupied = slot < counts.unsqueeze(-1)
-        pair = (start.unsqueeze(-1) + slot).clamp_max(bins.num_pairs - 1)
-        gaussian = bins.gaussian_ids[pair]
-
-        g_uv = uv[gaussian]
-        g_conic = conic[gaussian]
-        g_color = color[gaussian]
-        g_radius = radius[gaussian]
-        g_opacity = opacity[gaussian] * occupied
 
         tile_x = (tile_index % bins.grid_x) * tile_size
         tile_y = (tile_index // bins.grid_x) * tile_size
@@ -64,29 +57,50 @@ def rasterize_tiles(
         pixel_y = (tile_y.unsqueeze(-1) + offset).unsqueeze(-1).expand(num_tiles, tile_size, tile_size)
         pixel_x = pixel_x.reshape(num_tiles, num_pixels)
         pixel_y = pixel_y.reshape(num_tiles, num_pixels)
+        sample_x = pixel_x.to(dtype).unsqueeze(-1)
+        sample_y = pixel_y.to(dtype).unsqueeze(-1)
 
-        dx = pixel_x.unsqueeze(-1) - g_uv[..., 0].unsqueeze(-2)
-        dy = pixel_y.unsqueeze(-1) - g_uv[..., 1].unsqueeze(-2)
+        transmittance = torch.ones(num_tiles, num_pixels, dtype=dtype, device=device)
+        rgb = torch.zeros(num_tiles, num_pixels, 3, dtype=dtype, device=device)
 
-        a = g_conic[..., 0].unsqueeze(-2)
-        b = g_conic[..., 1].unsqueeze(-2)
-        c = g_conic[..., 2].unsqueeze(-2)
+        for slice_start in range(0, depth_slots, depth_chunk):
+            slot = torch.arange(slice_start, min(slice_start + depth_chunk, depth_slots), device=device)
+            occupied = slot < counts.unsqueeze(-1)
+            pair = (start.unsqueeze(-1) + slot).clamp_max(bins.num_pairs - 1)
+            gaussian = bins.gaussian_ids[pair]
 
-        # A tile is coarser than the 3-sigma box, so clip per pixel as well -
-        # otherwise the visible tail would depend on tile_size.
-        footprint = _inside_footprint(pixel_x, pixel_y, g_uv, g_radius)
+            g_uv = uv[gaussian]
+            g_conic = conic[gaussian]
+            g_color = color[gaussian]
+            g_opacity = opacity[gaussian] * occupied
 
-        power = -0.5 * (a * dx * dx + 2 * b * dx * dy + c * dy * dy)
-        alpha = (g_opacity.unsqueeze(-2) * power.exp() * footprint).clamp(0.0, alpha_max)
+            dx = sample_x - g_uv[..., 0].unsqueeze(-2)
+            dy = sample_y - g_uv[..., 1].unsqueeze(-2)
 
-        # Exclusive cumulative product: T_i = prod_{j<i} (1 - alpha_j).
-        survives = 1.0 - alpha
-        transmittance = torch.cat(
-            [torch.ones_like(survives[..., :1]), survives[..., :-1]], dim=-1
-        ).cumprod(dim=-1)
+            a = g_conic[..., 0].unsqueeze(-2)
+            b = g_conic[..., 1].unsqueeze(-2)
+            c = g_conic[..., 2].unsqueeze(-2)
 
-        weight = transmittance * alpha
-        rgb = torch.einsum("cpk,ckj->cpj", weight, g_color)
+            # The conic is positive definite, so power <= 0; the clamp only
+            # guards against round-off producing alpha > opacity.
+            power = (-0.5 * (a * dx * dx + 2 * b * dx * dy + c * dy * dy)).clamp_max(0.0)
+            alpha = (g_opacity.unsqueeze(-2) * power.exp()).clamp_max(alpha_max)
+            alpha = torch.where(alpha >= alpha_min, alpha, torch.zeros_like(alpha))
+
+            # Exclusive cumulative product inside the slice, scaled by the
+            # transmittance left over from the slices in front of it.
+            survives = 1.0 - alpha
+            local = torch.cat(
+                [torch.ones_like(survives[..., :1]), survives[..., :-1]], dim=-1
+            ).cumprod(dim=-1)
+
+            weight = transmittance.unsqueeze(-1) * local * alpha
+            rgb = rgb + torch.einsum("cpk,ckj->cpj", weight, g_color)
+            transmittance = transmittance * local[..., -1] * survives[..., -1]
+
+            more_slices = slice_start + depth_chunk < depth_slots
+            if more_slices and float(transmittance.detach().max()) < transmittance_min:
+                break
 
         # Edge tiles hang over the image border; those pixels are dropped.
         inside = (pixel_x < width) & (pixel_y < height)
@@ -103,23 +117,3 @@ def rasterize_tiles(
     image = image.index_add(0, torch.cat(shaded_index), torch.cat(shaded_rgb))
 
     return image.view(height, width, 3)
-
-
-def _inside_footprint(
-    pixel_x: torch.Tensor,
-    pixel_y: torch.Tensor,
-    g_uv: torch.Tensor,
-    g_radius: torch.Tensor,
-) -> torch.Tensor:
-    """(C, P, K) mask using the same floor/ceil bounds as the NumPy reference."""
-    lo = (g_uv - g_radius).floor().unsqueeze(-3)
-    hi = (g_uv + g_radius).ceil().unsqueeze(-3)
-
-    x = pixel_x.unsqueeze(-1)
-    y = pixel_y.unsqueeze(-1)
-
-    inside = (
-        (x >= lo[..., 0]) & (x <= hi[..., 0]) & (y >= lo[..., 1]) & (y <= hi[..., 1])
-    )
-
-    return inside.to(g_uv.dtype)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import torch
 import torch.nn as nn
 
@@ -15,7 +15,7 @@ class DensificationConfig:
     max_scale_fraction: float | None = 0.1
     split_into: int = 2
     max_screen_radius: float | None = 20.0
-    start_iteration: int = 50
+    start_iteration: int = 100
     end_iteration: int = 15_000
     interval: int = 100
     opacity_reset_interval: int | None = 3_000
@@ -23,6 +23,50 @@ class DensificationConfig:
     max_gaussians: int = 2_000_000
     delay_size_pruning_until_opacity_reset: bool = True
     seed: int = 0
+
+    def __post_init__(self) -> None:
+        if self.split_into < 2:
+            raise ValueError("split_into must be at least 2 (a split replaces one parent)")
+        if self.interval < 1:
+            raise ValueError("densification interval must be positive")
+
+    @classmethod
+    def for_iterations(cls, iterations: int, **overrides) -> "DensificationConfig":
+        """A 3DGS-style schedule for a run of `iterations` optimizer steps."""
+        iterations = max(int(iterations), 1)
+        interval = min(100, max(iterations // 20, 25))
+        start = max(iterations // 60, interval)
+        # Exclusive, like 3DGS's `iteration < densify_until_iter`; short runs
+        # still get at least one round.
+        end = max(iterations // 2, start + interval + 1)
+        # At least 8 densify rounds between resets (3DGS has 30).
+        reset = max(iterations // 10, 8 * interval)
+        config = cls(
+            start_iteration=start,
+            end_iteration=end,
+            interval=interval,
+            # A reset is only useful if densify/prune rounds follow it.
+            opacity_reset_interval=reset if reset < end else None,
+        )
+        return replace(config, **overrides)
+
+    def describe(self) -> str:
+        rounds = [
+            i for i in range(self.start_iteration + 1, self.end_iteration)
+            if i % self.interval == 0
+        ]
+        resets = (
+            "off" if self.opacity_reset_interval is None else
+            ", ".join(str(i) for i in range(
+                self.opacity_reset_interval, self.end_iteration, self.opacity_reset_interval
+            ))
+        )
+        if not rounds:
+            return "Densification: off for this run length"
+        return (
+            f"Densification: {len(rounds)} rounds, every {self.interval} iterations "
+            f"from {rounds[0]} to {rounds[-1]}; opacity reset at: {resets}"
+        )
 
 class DensificationStats:
     """Running screen-position gradient mean and maximum radius per splat."""
@@ -161,6 +205,7 @@ def split(
     optimizer,
     mask: torch.Tensor,
     config: DensificationConfig,
+    generator: torch.Generator | None = None,
 ) -> int:
     """Replace selected large splats with smaller children sampled from them."""
     original_count = len(model)
@@ -173,11 +218,17 @@ def split(
 
     parts = config.split_into
     scale = model.scale.detach()[mask].repeat(parts, 1)
-    rotation = model.rotation.detach()[mask].repeat(parts, 1)
+    rotation = model.rotation.detach()[mask]
+    rotation = rotation / rotation.norm(dim=-1, keepdim=True).clamp_min(1e-8)
+    rotation = rotation.repeat(parts, 1)
     center = model.xyz.detach()[mask].repeat(parts, 1)
 
-    generator = torch.Generator(device=model.device)
-    generator.manual_seed(config.seed)
+    if generator is None:
+        # Re-seeding with a constant every call gave every split round the
+        # same noise sequence, so children of a given parent rank always landed
+        # on the same relative offsets. Callers should pass a varying generator.
+        generator = torch.Generator(device=model.device)
+        generator.manual_seed(config.seed)
     offset = torch.randn(
         scale.shape,
         device=scale.device,
@@ -249,10 +300,15 @@ def densify_and_prune(
     gradient = stats.average_gradient()
     opacity = model.opacity.detach().reshape(-1)
     largest_scale = model.scale.detach().amax(dim=-1)
-    size_pruning_enabled = (
-        not config.delay_size_pruning_until_opacity_reset
-        or config.opacity_reset_interval is None
-        or iteration > config.opacity_reset_interval
+    # As in 3DGS (`size_threshold = 20 if iteration > opacity_reset_interval
+    # else None`): large splats are only pruned after an opacity reset has had
+    # a chance to remove the useless ones. With no reset scheduled there is no
+    # size pruning at all - pruning them anyway deletes the big splats that
+    # cover walls and background, leaving black holes (loss jumped from 0.19
+    # to 0.43 in one round on the MeSP scene at 128 px).
+    size_pruning_enabled = not config.delay_size_pruning_until_opacity_reset or (
+        config.opacity_reset_interval is not None
+        and iteration > config.opacity_reset_interval
     )
 
     opacity_drop = opacity <= config.min_opacity
@@ -282,20 +338,31 @@ def densify_and_prune(
     split_candidate_count = int(split_mask.sum())
 
     # Limit net growth while counting split as (children - 1) new splats.
+    # When the budget is tight, keep the highest-gradient candidates rather
+    # than whichever happen to have the lowest index.
+    def strongest(mask: torch.Tensor, limit: int) -> torch.Tensor:
+        indices = torch.nonzero(mask, as_tuple=False).flatten()
+        if len(indices) > limit:
+            order = gradient[indices].argsort(descending=True)[:limit]
+            indices = indices[order]
+        return indices
+
     capacity = max(config.max_gaussians - int(original_keep.sum()), 0)
-    clone_indices = torch.nonzero(clone_mask, as_tuple=False).flatten()[:capacity]
+    clone_indices = strongest(clone_mask, capacity)
     clone_mask = torch.zeros_like(clone_mask)
     clone_mask[clone_indices] = True
     capacity -= len(clone_indices)
 
     split_capacity = capacity // (config.split_into - 1)
-    split_indices = torch.nonzero(split_mask, as_tuple=False).flatten()[:split_capacity]
+    split_indices = strongest(split_mask, split_capacity)
     split_mask = torch.zeros_like(split_mask)
     split_mask[split_indices] = True
 
     cloned = clone(model, optimizer, clone_mask)
     split_parent_mask = _pad_mask(split_mask, len(model))
-    split_count = split(model, optimizer, split_parent_mask, config)
+    generator = torch.Generator(device=model.device)
+    generator.manual_seed(config.seed * 1_000_003 + iteration)
+    split_count = split(model, optimizer, split_parent_mask, config, generator)
 
     original_after_split = original_keep[~split_mask]
     added_count = len(model) - original_after_split.numel()
@@ -349,4 +416,8 @@ def should_densify(iteration: int, config: DensificationConfig) -> bool:
 
 def should_reset_opacity(iteration: int, config: DensificationConfig) -> bool:
     interval = config.opacity_reset_interval
-    return interval is not None and iteration > 0 and iteration % interval == 0
+    return (
+        interval is not None
+        and 0 < iteration < config.end_iteration
+        and iteration % interval == 0
+    )

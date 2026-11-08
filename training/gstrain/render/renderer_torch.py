@@ -4,10 +4,10 @@ import torch
 
 from ..geometry.camera import TorchCamera
 from ..model_torch import TorchGaussianModel
-from .binning import build_tile_bins, screen_radius
+from .binning import build_tile_bins, cutoff_sigma, screen_radius
 from .covariance import covariance_2d, covariance_3d, covariance_to_conic
 from .projection import project_points_Torch, world_to_camera
-from .rasterizer import rasterize_tiles
+from .rasterizer import ALPHA_MIN, rasterize_tiles
 
 
 @dataclass
@@ -17,7 +17,7 @@ class ProjectedGaussians:
     mean: torch.Tensor       # (N, 2) pixel centers
     cov2d: torch.Tensor      # (N, 2, 2)
     conic: torch.Tensor      # (N, 3) inverse covariance as [A, B, C]
-    radius: torch.Tensor     # (N, 2) 3-sigma pixel radii
+    radius: torch.Tensor     # (N, 2) pixel radii where alpha reaches the cutoff
     color: torch.Tensor      # (N, 3)
     opacity: torch.Tensor    # (N,)
     depth: torch.Tensor      # (N,)
@@ -29,9 +29,12 @@ def project_gaussians(
     gaussians: TorchGaussianModel,
     near: float = 0.01,
     epsilon: float = 1e-6,
-    sigma_factor: float = 3.0,
+    sigma_factor: float | None = None,
     max_radius: float | None = None,
+    alpha_min: float = ALPHA_MIN,
 ) -> ProjectedGaussians:
+    """sigma_factor=None sizes each footprint from its opacity (see cutoff_sigma);
+    a float forces a fixed sigma box for every splat."""
     points_camera = world_to_camera(camera, gaussians.xyz)
     mean, depth, visible = project_points_Torch(camera, points_camera, near=near)
 
@@ -39,13 +42,16 @@ def project_gaussians(
     cov2d = covariance_2d(camera, points_camera, cov3d, near=near, epsilon=epsilon)
     conic, _ = covariance_to_conic(cov2d)
 
+    opacity = gaussians.opacity
+    sigma = cutoff_sigma(opacity, alpha_min) if sigma_factor is None else sigma_factor
+
     return ProjectedGaussians(
         mean=mean,
         cov2d=cov2d,
         conic=conic,
-        radius=screen_radius(cov2d, sigma_factor, max_radius=max_radius),
+        radius=screen_radius(cov2d.detach(), sigma, max_radius=max_radius),
         color=gaussians.color,
-        opacity=gaussians.opacity,
+        opacity=opacity,
         depth=depth,
         visible=visible,
     )
@@ -58,10 +64,12 @@ def render_gaussians(
     tile_chunk: int = 32,
     near: float = 0.01,
     epsilon: float = 1e-6,
-    sigma_factor: float = 3.0,
+    sigma_factor: float | None = None,
     max_per_tile: int | None = None,
     max_radius: float | None = None,
     alpha_max: float = 0.999,
+    alpha_min: float = ALPHA_MIN,
+    depth_chunk: int = 256,
 ) -> torch.Tensor:
     """-> (H, W, 3) image on the camera's device."""
     image, _ = render_gaussians_with_aux(
@@ -75,6 +83,8 @@ def render_gaussians(
         max_per_tile=max_per_tile,
         max_radius=max_radius,
         alpha_max=alpha_max,
+        alpha_min=alpha_min,
+        depth_chunk=depth_chunk,
     )
     return image
 
@@ -86,10 +96,12 @@ def render_gaussians_with_aux(
     tile_chunk: int = 32,
     near: float = 0.01,
     epsilon: float = 1e-6,
-    sigma_factor: float = 3.0,
+    sigma_factor: float | None = None,
     max_per_tile: int | None = None,
     max_radius: float | None = None,
     alpha_max: float = 0.999,
+    alpha_min: float = ALPHA_MIN,
+    depth_chunk: int = 256,
 ) -> tuple[torch.Tensor, ProjectedGaussians]:
     """Return the rendered image and screen-space data used by training."""
     # A footprint wider than the image already covers every tile, so capping
@@ -99,7 +111,7 @@ def render_gaussians_with_aux(
 
     projected = project_gaussians(
         camera, gaussians, near=near, epsilon=epsilon, sigma_factor=sigma_factor,
-        max_radius=max_radius,
+        max_radius=max_radius, alpha_min=alpha_min,
     )
     if projected.mean.requires_grad:
         projected.mean.retain_grad()
@@ -112,8 +124,7 @@ def render_gaussians_with_aux(
         camera.width,
         camera.height,
         tile_size=tile_size,
-        sigma_factor=sigma_factor,
-        max_radius=max_radius,
+        radius=projected.radius,
     )
 
     image = rasterize_tiles(
@@ -122,13 +133,14 @@ def render_gaussians_with_aux(
         projected.conic,
         projected.opacity,
         projected.color,
-        projected.radius,
         camera.width,
         camera.height,
         tile_size=tile_size,
         tile_chunk=tile_chunk,
         max_per_tile=max_per_tile,
         alpha_max=alpha_max,
+        alpha_min=alpha_min,
+        depth_chunk=depth_chunk,
     )
 
     return image.clamp(0.0, 1.0), projected
