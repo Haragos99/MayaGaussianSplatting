@@ -3,6 +3,7 @@
     python main.py                         # 7000 iterations at 480 px
     python main.py --iterations 1000       # any `gstrain train` option works
     python main.py --strategy mcmc         # 3DGS-MCMC with a splat cap
+    python main.py clean <run folder> --crop-radius 0.5
     python main.py verify out\\point_cloud.ply
 
 Everything is forwarded to `gstrain.cli` (see `python -m gstrain.cli train -h`);
@@ -16,7 +17,7 @@ from gstrain.cli import main
 DEFAULT_SCENE = r"C:\Users\Geri\Documents\Projects\CG\MeSP"
 # Not MeSP\out: that folder holds the old trainer's results.
 DEFAULT_OUTPUT = DEFAULT_SCENE + r"\runs\latest"
-COMMANDS = ("train", "verify", "stats")
+COMMANDS = ("train", "clean", "verify", "stats")
 
 
 if __name__ == "__main__":

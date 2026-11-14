@@ -12,15 +12,18 @@ from .checkpoint import load_checkpoint, save_checkpoint
 from .colmap import load_colmap
 from .dataset import build_views, split_views
 from .densification import DensificationConfig
-from .export_ply import UP_AXES, verify_ply, write_ply
+from .clean import clean_model, orbit_camera
+from .export_ply import UP_AXES, load_ply, verify_ply, write_ply
 from .model import initialize_gaussians
 from .model_torch import TorchGaussianModel
-from .preview import save_comparison
+from .preview import compose, save_comparison
 from .render.renderer_torch import render_gaussians
 from .run_log import RunLog
 from .strategy_mcmc import MCMCConfig
 from .torch_utils import choose_device, describe_device
-from .train import BACKGROUNDS, STRATEGIES, TrainConfig, background_color, render_options, scene_extent, train
+from .train import (
+    BACKGROUNDS, STRATEGIES, TrainConfig, background_color, evaluate, render_options, scene_extent, train,
+)
 
 
 def _images_dir(data, images: Path | None) -> Path:
@@ -168,6 +171,116 @@ def command_verify(args) -> None:
     print(f"  bounds       {np.round(low, 3)} .. {np.round(high, 3)}")
 
 
+def command_clean(args) -> Path:
+    """Remove transparent, unseen and far-away splats from a trained model."""
+    target = Path(args.input)
+    ply = target / "point_cloud.ply" if target.is_dir() else target
+    if not ply.is_file():
+        raise FileNotFoundError(f"no point_cloud.ply at {target}")
+    run_dir = ply.parent
+
+    # Defaults from the training run, so `clean <run folder>` needs nothing else.
+    saved = {}
+    cfg_path = run_dir / "cfg_args.json"
+    if cfg_path.is_file():
+        saved = json.loads(cfg_path.read_text(encoding="utf-8"))
+
+    def setting(name, cast, fallback):
+        value = getattr(args, name)
+        if value is not None:
+            return value
+        if saved.get(name) not in (None, "None"):
+            return cast(saved[name])
+        return fallback
+
+    source = setting("source", Path, None)
+    if source is None:
+        raise ValueError("pass -s <COLMAP project>: no cfg_args.json next to the .ply says which scene it is")
+    images = setting("images", Path, None)
+    max_edge = setting("max_edge", int, 480)
+    eval_hold = setting("eval_hold", int, 8)
+    file_up_axis = saved.get("up_axis", "colmap")
+    out_up_axis = args.up_axis or file_up_axis
+    output = Path(args.output) if args.output else run_dir / "point_cloud_clean.ply"
+
+    device = choose_device()
+    data = load_colmap(source)
+    views = build_views(data, _images_dir(data, images), max_edge=max_edge, device=device)
+    train_views, test_views = split_views(views, eval_hold)
+    model = load_ply(ply, device=device, up_axis=file_up_axis)
+    camera = views[0].camera
+    print(f"{ply}: {len(model):,} splats, SH degree {model.max_sh_degree}; "
+          f"{len(train_views)} train / {len(test_views)} test views at {camera.width}x{camera.height}")
+
+    config = TrainConfig()
+    result = clean_model(
+        model,
+        train_views,
+        min_opacity=args.min_opacity,
+        keep_contribution=args.keep_contribution,
+        crop_radius=args.crop_radius,
+        render_options=render_options(config),
+    )
+    cleaned = result.model
+
+    report = {
+        "input": str(ply),
+        "output": str(output),
+        "splats_before": len(model),
+        "splats_after": len(cleaned),
+        "removed": result.removed,
+        "min_opacity": args.min_opacity,
+        "keep_contribution": args.keep_contribution,
+        "crop_radius_relative": args.crop_radius,
+        "crop_radius_world": result.crop_radius,
+        "focus": [round(float(v), 4) for v in result.focus],
+    }
+    if test_views:
+        report["test_psnr_before"] = evaluate(model, test_views, config)["psnr"]
+        report["test_psnr_after"] = evaluate(cleaned, test_views, config)["psnr"]
+
+    write_ply(output, cleaned, out_up_axis)
+    report["size_mb_before"] = round(ply.stat().st_size / 2**20, 1)
+    report["size_mb_after"] = round(output.stat().st_size / 2**20, 1)
+
+    if args.preview:
+        from PIL import Image
+
+        view = test_views[0] if test_views else train_views[0]
+        rows = []
+        with torch.no_grad():
+            for degrees in (0.0, args.preview_angle):
+                orbit = orbit_camera(view.camera, result.focus, degrees, views)
+                label = "" if degrees == 0 else f" at {degrees:g} deg"
+                rows.append(compose([
+                    (f"before ({len(model):,}){label}", render_gaussians(orbit, model)),
+                    (f"after ({len(cleaned):,}){label}", render_gaussians(orbit, cleaned)),
+                ]))
+        sheet = Image.new("RGB", (max(r.width for r in rows), sum(r.height for r in rows)))
+        y = 0
+        for row in rows:
+            sheet.paste(row, (0, y))
+            y += row.height
+        preview = output.with_name(output.stem + "_preview.jpg")
+        sheet.save(preview, quality=92)
+        report["preview"] = str(preview)
+
+    output.with_name(output.stem + "_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    print("removed: " + ", ".join(f"{k} {v:,}" for k, v in result.removed.items()))
+    if result.crop_radius is not None:
+        print(f"crop: radius {result.crop_radius:.3f} around {report['focus']}")
+    print(f"splats {len(model):,} -> {len(cleaned):,} ({len(cleaned) / max(len(model), 1):.0%}), "
+          f"file {report['size_mb_before']} MB -> {report['size_mb_after']} MB")
+    if test_views:
+        note = "  (lower is expected when cropping: the background is gone)" if result.crop_radius else ""
+        print(f"test PSNR {report['test_psnr_before']:.2f} -> {report['test_psnr_after']:.2f} dB{note}")
+    if args.preview:
+        print(f"preview: {report['preview']}")
+    print(f"wrote {output}")
+    return output
+
+
 def command_stats(args) -> None:
     data = load_colmap(args.source)
     cameras = {camera.model for camera in data.cameras.values()}
@@ -220,6 +333,23 @@ def build_parser() -> argparse.ArgumentParser:
     p = commands.add_parser("verify", help="decode a .ply the way the Maya plugin does")
     p.add_argument("ply", type=Path)
     p.set_defaults(func=command_verify)
+
+    p = commands.add_parser("clean", help="remove transparent / unseen / far-away splats for use in Maya")
+    p.add_argument("input", type=Path, help="training output folder (or its point_cloud.ply)")
+    p.add_argument("-o", "--output", type=Path, help="default: <folder>/point_cloud_clean.ply")
+    p.add_argument("-s", "--source", type=Path, help="COLMAP project (default: from cfg_args.json)")
+    p.add_argument("--images", type=Path, help="photo folder (default: from cfg_args.json)")
+    p.add_argument("--max-edge", type=int, help="render size for the contribution score (default: as trained)")
+    p.add_argument("--eval-hold", type=int, help="test-view split (default: as trained)")
+    p.add_argument("--min-opacity", type=float, default=0.05, help="drop splats below this opacity (0 = off)")
+    p.add_argument("--keep-contribution", type=float, default=0.99,
+                   help="keep the strongest splats that make this share of the training images (1 = off)")
+    p.add_argument("--crop-radius", type=float, default=0.0,
+                   help="keep splats within this many camera distances of the subject (0 = off, e.g. 0.5)")
+    p.add_argument("--up-axis", choices=UP_AXES, help="axis of the written file (default: as trained)")
+    p.add_argument("--no-preview", dest="preview", action="store_false", help="skip the before/after image")
+    p.add_argument("--preview-angle", type=float, default=40.0, help="side angle of the second preview row")
+    p.set_defaults(func=command_clean)
 
     p = commands.add_parser("stats", help="what does a COLMAP project contain?")
     p.add_argument("-s", "--source", type=Path, required=True)

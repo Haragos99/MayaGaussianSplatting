@@ -149,3 +149,54 @@ def verify_ply(path: str | Path) -> dict[str, object]:
         "scale": np.exp(scale_raw),
         "rotation": quaternion,
     }
+
+
+def load_ply(path: str | Path, device: torch.device | None = None, up_axis: str = "colmap") -> TorchGaussianModel:
+    """Read a .ply written by write_ply back into a trainable model.
+
+    `up_axis` is how the file was written; a "maya-y" file is rotated back
+    into the COLMAP frame (the rotation is its own inverse). All SH bands in
+    the file become active.
+    """
+    import torch.nn as nn
+
+    if up_axis not in UP_AXES:
+        raise ValueError(f"up_axis must be one of {UP_AXES}, got {up_axis!r}")
+    device = device or torch.device("cpu")
+    fields = read_ply(path)
+    count = len(fields["x"])
+    rest = sum(1 for name in fields if name.startswith("f_rest_")) // 3
+    degree = {0: 0, 3: 1, 8: 2, 15: 3}.get(rest)
+    if degree is None:
+        raise ValueError(f"{path} has {rest * 3} f_rest values, which is not an SH degree 0-3 layout")
+
+    def stack(names: list[str]) -> np.ndarray:
+        return np.stack([fields[name] for name in names], axis=1).astype(np.float64)
+
+    xyz = stack(["x", "y", "z"])
+    rotation = stack([f"rot_{i}" for i in range(4)])
+    if up_axis == "maya-y":
+        xyz = xyz @ _MAYA_Y_ROTATION.T
+        rotation = _quat_multiply(_MAYA_Y_QUATERNION, rotation)
+
+    def parameter(array: np.ndarray) -> nn.Parameter:
+        return nn.Parameter(torch.as_tensor(np.ascontiguousarray(array), dtype=torch.float32, device=device))
+
+    model = TorchGaussianModel(
+        xyz=torch.zeros(count, 3, device=device),
+        scale=torch.ones(count, 3, device=device),
+        rotation=torch.zeros(count, 4, device=device),
+        opacity=torch.full((count,), 0.5, device=device),
+        color=torch.zeros(count, 3, device=device),
+        sh_degree=degree,
+    )
+    model.xyz = parameter(xyz)
+    model.scale_raw = parameter(stack([f"scale_{i}" for i in range(3)]))
+    model.rotation = parameter(rotation)
+    model.opacity_raw = parameter(fields["opacity"].astype(np.float64))
+    model.sh_dc = parameter(stack([f"f_dc_{i}" for i in range(3)]).reshape(count, 1, 3))
+    # f_rest is channel-major on disk: (N, 3, K-1) -> (N, K-1, 3).
+    f_rest = stack([f"f_rest_{i}" for i in range(rest * 3)]).reshape(count, 3, rest).transpose(0, 2, 1)
+    model.sh_rest = parameter(f_rest)
+    model.active_sh_degree = degree
+    return model
