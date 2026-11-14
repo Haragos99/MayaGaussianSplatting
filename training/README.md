@@ -29,8 +29,15 @@ Install a CUDA build of PyTorch if `pip` picks the CPU one
 
 ```powershell
 .venv\Scripts\python.exe -c "from gstrain.torch_utils import describe_device; print(describe_device())"
-.venv\Scripts\python.exe -m pytest tests -q
+.venv\Scripts\python.exe -m pytest tests -q                  # all 115 tests, ~5 s
+.venv\Scripts\python.exe -m pytest tests -q -m "not slow"    # skip the end-to-end ones, ~2 s
+.venv\Scripts\python.exe -m pytest tests\test_cli.py -q      # one file
 ```
+
+The tests use only synthetic data (no MeSP needed). `tests/conftest.py` builds a tiny
+COLMAP project (8 photos of 32×24 px, one PINHOLE and one SIMPLE_RADIAL camera) that the
+command-line tests train, clean, verify and resume on. The tests marked `slow` are the
+end-to-end runs: `test_cli.py` and the opacity-reset collapse regression.
 
 ---
 
