@@ -20,12 +20,17 @@ class TrainingCamera:
     t: np.ndarray
     C: np.ndarray
 
+    # Lens distortion (k1, k2, p1, p2) in COLMAP's OpenCV model; zeros = pinhole.
+    # Training images are rectified with it on load (see undistort.py).
+    distortion: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
 
 
 
 
 
 def create_training_camera(camera: Camera, image: Image) -> TrainingCamera:
+    distortion = (0.0, 0.0, 0.0, 0.0)
     if camera.model == "PINHOLE":
         fx, fy, cx, cy = camera.params
     elif camera.model == "SIMPLE_PINHOLE":
@@ -36,13 +41,16 @@ def create_training_camera(camera: Camera, image: Image) -> TrainingCamera:
         f, cx, cy, k = camera.params
         fx = f
         fy = f
+        distortion = (float(k), 0.0, 0.0, 0.0)
     elif camera.model == "OPENCV":
         fx, fy, cx, cy, k1, k2, p1, p2 = camera.params
+        distortion = (float(k1), float(k2), float(p1), float(p2))
 
     elif camera.model == "RADIAL":
         f, cx, cy, k1, k2 = camera.params
         fx = f
         fy = f
+        distortion = (float(k1), float(k2), 0.0, 0.0)
 
     else:
         raise NotImplementedError( f"Camera model {camera.model} " "is not supported yet.")
@@ -75,7 +83,8 @@ def create_training_camera(camera: Camera, image: Image) -> TrainingCamera:
         R=R,
         t=t,
         K=K,
-        C=C
+        C=C,
+        distortion=distortion,
     )
 
 

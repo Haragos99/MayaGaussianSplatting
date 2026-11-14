@@ -16,12 +16,25 @@ def covariance_3d(scale: torch.Tensor, rotation: torch.Tensor) -> torch.Tensor:
 def perspective_jacobian(
     camera: TorchCamera,
     points_camera: torch.Tensor,
-    near: float = 0.01,
+    near: float = 0.2,
+    frustum_margin: float = 1.3,
 ) -> torch.Tensor:
-    """(N, 3) camera points -> (N, 2, 3) local linearisation of the projection."""
+    """(N, 3) camera points -> (N, 2, 3) local linearisation of the projection.
+
+    As in 3DGS, x/z and y/z are clamped to `frustum_margin` times the half field
+    of view before linearising. Far outside the image the Jacobian's -x/z^2 term
+    grows without bound and a splat just off-screen would get a huge, smeared
+    footprint across the view.
+    """
     x, y, z = points_camera.unbind(dim=-1)
 
     z = z.clamp_min(near)
+    # tan(fov / 2) = (size / 2) / focal.
+    lim_x = frustum_margin * 0.5 * camera.width / camera.fx
+    lim_y = frustum_margin * 0.5 * camera.height / camera.fy
+    x = torch.minimum(torch.maximum(x / z, -lim_x), lim_x) * z
+    y = torch.minimum(torch.maximum(y / z, -lim_y), lim_y) * z
+
     z2 = z * z
     zero = torch.zeros_like(z)
 
@@ -30,14 +43,20 @@ def perspective_jacobian(
 
     return torch.stack([row_u, row_v], dim=-2)
 
+
 def covariance_2d(
     camera: TorchCamera,
     points_camera: torch.Tensor,
     cov3d: torch.Tensor,
-    near: float = 0.01,
-    epsilon: float = 1e-6,
+    near: float = 0.2,
+    dilation: float = 0.3,
 ) -> torch.Tensor:
-    """World covariances -> (N, 2, 2) screen-space covariances in pixel units."""
+    """World covariances -> (N, 2, 2) screen-space covariances in pixel units.
+
+    `dilation` (pixels^2) is the EWA screen-space low-pass filter from 3DGS:
+    every splat is at least ~one pixel wide, so tiny splats cannot alias to a
+    single pixel (which makes the optimisation unstable).
+    """
     R = camera.R
 
     cov_camera = R @ cov3d @ R.transpose(-1, -2)
@@ -48,7 +67,7 @@ def covariance_2d(
     # Keeps thin/degenerate splats invertible and at least sub-pixel wide.
     eye = torch.eye(2, dtype=cov.dtype, device=cov.device)
 
-    return cov + epsilon * eye
+    return cov + dilation * eye
 
 
 def covariance_to_conic(cov2d: torch.Tensor, epsilon: float = 1e-12) -> tuple[torch.Tensor, torch.Tensor]:

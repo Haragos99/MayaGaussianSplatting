@@ -75,3 +75,9 @@ def photometric_loss(
     d_ssim = 1.0 - ssim(rendered, target)
 
     return (1.0 - lambda_dssim) * l1_loss(rendered, target) + lambda_dssim * d_ssim
+
+
+def psnr(rendered: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Peak signal-to-noise ratio in dB for images in [0, 1] (higher is better)."""
+    mse = (rendered - target).square().mean().clamp_min(1e-12)
+    return -10.0 * torch.log10(mse)

@@ -39,9 +39,9 @@ class TorchCamera:
     def rescaled(self, width: int, height: int) -> "TorchCamera":
         """Same view, different pixel grid.
 
-        Pixel centres sit on integer coordinates, so the image spans
-        [-0.5, W - 0.5] and the principal point maps as (c + 0.5) * s - 0.5.
-        Scaling c by s alone would shift the image by half a pixel per axis.
+        COLMAP puts pixel centres at half-integers: the image spans [0, W] and
+        pixel i covers [i, i + 1]. Resizing is then a plain scale of the
+        principal point (the rasterizer samples at i + 0.5 to match).
         """
         scale_x = width / self.width
         scale_y = height / self.height
@@ -51,8 +51,8 @@ class TorchCamera:
             height=int(height),
             fx=self.fx * scale_x,
             fy=self.fy * scale_y,
-            cx=(self.cx + 0.5) * scale_x - 0.5,
-            cy=(self.cy + 0.5) * scale_y - 0.5,
+            cx=self.cx * scale_x,
+            cy=self.cy * scale_y,
             R=self.R,
             t=self.t,
         )

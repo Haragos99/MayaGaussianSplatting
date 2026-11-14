@@ -7,6 +7,14 @@ from .model_torch import PARAMETER_ATTRIBUTES, TorchGaussianModel
 from .render.renderer_torch import ProjectedGaussians
 
 
+# 3DGS resets opacity every 3000 iterations (30k-iteration schedule).
+OPACITY_RESET_INTERVAL = 3_000
+
+# A single densify round that removes more than this share of all splats is
+# almost certainly destroying the scene, not cleaning it up.
+PRUNE_WARNING_FRACTION = 0.25
+
+
 @dataclass(frozen=True)
 class DensificationConfig:
     grad_threshold: float = 2e-4
@@ -14,7 +22,14 @@ class DensificationConfig:
     percent_dense: float = 0.01
     max_scale_fraction: float | None = 0.1
     split_into: int = 2
-    max_screen_radius: float | None = 20.0
+    # Screen-size pruning is OFF by default, as in gsplat (refine_scale2d_stop_iter
+    # = 0). With a fixed 20 px limit at 480 px it deleted the large splats that
+    # cover walls and background (10,935 at once on MeSP), every later round
+    # deleted whatever grew back, and test PSNR collapsed from 20.8 to 6.4 dB.
+    # Pixels (max_screen_radius) or a fraction of the image's long side
+    # (max_screen_fraction, resolution independent) can still be set.
+    max_screen_radius: float | None = None
+    max_screen_fraction: float | None = None
     start_iteration: int = 100
     end_iteration: int = 15_000
     interval: int = 100
@@ -32,15 +47,25 @@ class DensificationConfig:
 
     @classmethod
     def for_iterations(cls, iterations: int, **overrides) -> "DensificationConfig":
-        """A 3DGS-style schedule for a run of `iterations` optimizer steps."""
+        """A 3DGS-style schedule for a run of `iterations` optimizer steps.
+
+        With one view per step, 100 steps between rounds is the 3DGS value: each
+        round's gradient statistics then cover 100 views, and new splats get 100
+        Adam steps to settle before they are judged again. 30k iterations
+        reproduce the reference schedule exactly.
+        """
         iterations = max(int(iterations), 1)
-        interval = min(100, max(iterations // 20, 25))
-        start = max(iterations // 60, interval)
-        # Exclusive, like 3DGS's `iteration < densify_until_iter`; short runs
-        # still get at least one round.
-        end = max(iterations // 2, start + interval + 1)
-        # At least 8 densify rounds between resets (3DGS has 30).
-        reset = max(iterations // 10, 8 * interval)
+        interval = 100
+        start = iterations // 60
+        # Exclusive, like 3DGS's `iteration < densify_until_iter`. Runs under 200
+        # iterations get no round: one at the end only adds untrained splats.
+        end = max(iterations // 2, start + 1)
+        # Opacity resets on the 3DGS clock: every 3000 iterations. A reset only
+        # helps once densification has built the scene out of small splats; the
+        # old n/10 rule reset a 7000-iteration run at 800, after 7 rounds, and
+        # every reset costs ~500 iterations of recovery. Size pruning starts
+        # after the first reset, so it moves with it.
+        reset = OPACITY_RESET_INTERVAL
         config = cls(
             start_iteration=start,
             end_iteration=end,
@@ -75,6 +100,8 @@ class DensificationStats:
         self.accumulated = torch.zeros(count, device=device)
         self.denominator = torch.zeros(count, device=device)
         self.max_radius = torch.zeros(count, device=device)
+        # The same radius as a fraction of the image's long side.
+        self.max_radius_fraction = torch.zeros(count, device=device)
 
     @torch.no_grad()
     def add(self, projected: ProjectedGaussians, width: int, height: int) -> None:
@@ -99,6 +126,8 @@ class DensificationStats:
         self.denominator[seen] += 1.0
         radius_1d = radius.amax(dim=-1)
         self.max_radius[seen] = torch.maximum(self.max_radius[seen], radius_1d[seen])
+        fraction = radius_1d / float(max(width, height))
+        self.max_radius_fraction[seen] = torch.maximum(self.max_radius_fraction[seen], fraction[seen])
 
     def average_gradient(self) -> torch.Tensor:
         average = self.accumulated / self.denominator.clamp_min(1.0)
@@ -238,13 +267,16 @@ def split(
     rotations = quaternion_to_rotation_matrix(rotation)
     displaced = torch.bmm(rotations, offset.unsqueeze(-1)).squeeze(-1)
 
+    # Everything else (opacity, SH colour, ...) is copied from the parent.
     additions = {
-        "xyz": center + displaced,
-        "scale": (scale / (0.8 * parts)).log(),
-        "rotation": rotation,
-        "opacity": model.opacity_raw.detach()[mask].repeat(parts),
-        "color": model.color_raw.detach()[mask].repeat(parts, 1),
+        name: _repeat_rows(getattr(model, attribute).detach()[mask], parts)
+        for name, attribute in PARAMETER_ATTRIBUTES.items()
     }
+    additions.update(
+        xyz=center + displaced,
+        scale=(scale / (0.8 * parts)).log(),
+        rotation=rotation,
+    )
     append(model, optimizer, additions)
 
     keep = torch.ones(len(model), dtype=torch.bool, device=model.device)
@@ -273,6 +305,11 @@ def reset_opacity(
 
     _rebuild_parameters(model, optimizer, build)
     return reset_count
+
+
+def _repeat_rows(tensor: torch.Tensor, times: int) -> torch.Tensor:
+    """Stack `times` copies of a per-splat tensor along the first axis."""
+    return tensor.repeat(times, *([1] * (tensor.ndim - 1)))
 
 
 def _pad_mask(mask: torch.Tensor, size: int) -> torch.Tensor:
@@ -317,7 +354,9 @@ def densify_and_prune(
         world_drop = largest_scale > config.max_scale_fraction * extent
     screen_drop = torch.zeros_like(opacity_drop)
     if size_pruning_enabled and config.max_screen_radius is not None:
-        screen_drop = stats.max_radius > config.max_screen_radius
+        screen_drop |= stats.max_radius > config.max_screen_radius
+    if size_pruning_enabled and config.max_screen_fraction is not None:
+        screen_drop |= stats.max_radius_fraction > config.max_screen_fraction
 
     screen_drop &= ~opacity_drop
     world_drop &= ~opacity_drop & ~screen_drop
